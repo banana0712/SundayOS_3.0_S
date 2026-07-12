@@ -43,3 +43,6 @@ Thumbs.db
 # --- 本项目临时抽取文件 ---
 _docs_extract.txt
 _exp_extract.txt
+
+# Claude Code 本地设置
+.claude/
