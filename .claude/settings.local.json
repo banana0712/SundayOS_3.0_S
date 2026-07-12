@@ -1,0 +1,43 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install *)",
+      "Bash(npm run *)",
+      "Bash(npm ls *)",
+      "Bash(curl -s http://localhost:3000)",
+      "Bash(pkill -f \"next dev\")",
+      "Bash(pkill -f \"next-server\")",
+      "Bash(python -c ' *)",
+      "Bash(cd /tmp)",
+      "Bash(pdftotext -layout \"C:/Users/18176/Desktop/SundayOS/相关论文/关于memory/From Storage to Experience.pdf\" storage.txt)",
+      "Bash(pdftotext -layout \"C:/Users/18176/Desktop/SundayOS/相关论文/关于架构/Generative Agents_Interactive Simulacra of Human Behavior.pdf\" genagents.txt)",
+      "Bash(pdftotext -layout \"C:/Users/18176/Desktop/SundayOS/相关论文/关于架构/The Design and Implementation of XiaoIce.pdf\" xiaoice.txt)",
+      "Read(//tmp/**)",
+      "Bash(python -c \"import PyPDF2; print\\('pypdf2 ok'\\)\")",
+      "Bash(python -c \"import pdfplumber; print\\('pdfplumber ok'\\)\")",
+      "Bash(python -c \"import fitz; print\\('fitz ok'\\)\")",
+      "Bash(python -c \"import pypdf; print\\('pypdf ok'\\)\")",
+      "Bash(pdftotext \"C:/Users/18176/Desktop/SundayOS/相关论文/关于agent/Understanding the Planning of LLM Agents.pdf\" planning.txt)",
+      "Bash(pdftotext \"C:/Users/18176/Desktop/SundayOS/相关论文/关于agent/The Landscape of Emerging AI Agent Architectures.pdf\" landscape.txt)",
+      "Bash(pdftotext \"C:/Users/18176/Desktop/SundayOS/相关论文/关于agent/AI Agent Systems_Architectures  Applications and Evaluation.pdf\" aisystems.txt)",
+      "Bash(pdftotext \"C:/Users/18176/Desktop/SundayOS/相关论文/关于架构/ReAct Synergizing Reasoning and Acting in Language Models.pdf\" react.txt)",
+      "Bash(command -v pdftotext)",
+      "Bash(command -v python)",
+      "Bash(command -v python3)",
+      "Bash(python -c \"import pypdf\")",
+      "Bash(python -c \"import PyPDF2\")",
+      "Bash(python -c \"import pdfplumber\")",
+      "Bash(python -c \"import fitz\")",
+      "Bash(cygpath -w /tmp)",
+      "Bash(pdftotext -layout \"C:/Users/18176/Desktop/SundayOS/相关论文/工程实践/a-practical-guide-to-building-agents.pdf\" openai.txt)",
+      "Bash(pdftotext -layout \"C:/Users/18176/Desktop/SundayOS/相关论文/工程实践/Building Effective AI Agents- Architecture Patterns and Implementation Frameworks.pdf\" anthropic.txt)",
+      "Bash(python -m pip install -q pytest pytest-asyncio)",
+      "Bash(python -m pytest -q)",
+      "Bash(pkill -f \"uvicorn app.main\")",
+      "Bash(python -c \"import fastapi, uvicorn; print\\('fastapi/uvicorn 已安装'\\)\")",
+      "Bash(rm -f /tmp/sunday_run.log)",
+      "Bash(gh --version)",
+      "Bash(gh auth *)"
+    ]
+  }
+}

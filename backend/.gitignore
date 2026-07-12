@@ -1,0 +1,14 @@
+# Secrets — never commit
+.env
+*.key
+
+# Local storage
+*.db
+sunday.db
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/

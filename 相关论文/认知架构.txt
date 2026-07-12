@@ -1,0 +1,59 @@
+我建议的学习路线（按难度排序）
+
+第一层：建立认知科学基础（★★★★★）
+
+不用急着啃 ACT-R 的数学模型。
+
+先知道人脑是如何工作的。
+
+建议学习这些概念：
+
+* 注意力（Attention）
+* 工作记忆（Working Memory）
+* 长期记忆（Long-term Memory）
+* 情景记忆（Episodic Memory）
+* 语义记忆（Semantic Memory）
+* 程序记忆（Procedural Memory）
+* 决策（Decision Making）
+* 情绪（Emotion）
+* 元认知（Metacognition）
+
+这几个概念，你会发现和 Agent 的模块几乎一一对应。
+
+1、act-r
+2、soar
+3、Global Workspace Theory
+4、Predictive Processing
+
+                 Sunday
+
+                     │
+          Conscious Workspace
+                     │
+     ┌───────────────┼───────────────┐
+     │               │               │
+ Emotion        Planner        Attention
+     │               │               │
+ Episodic      Semantic       Procedural
+  Memory         Memory          Memory
+     │               │               │
+         Reflection Engine
+                     │
+              Personality
+                     │
+             Action Manager
+                     │
+               LLM + Tools
+
+领域学习
+ 认知心理学
+        ↓
+认知科学
+        ↓
+认知架构
+        ↓
+AI Agent
+        ↓
+Digital Human（数字人）
+        ↓
+Embodied AI（具身智能）

@@ -1,0 +1,20 @@
+# SundayOS 3.0 backend — Python 3.11+
+# Start-simple stack (ADR-010): zero external services required to run.
+
+# Web
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+pydantic==2.10.3
+pydantic-settings==2.7.0
+
+# Engines (optional at runtime — imported lazily; MockProvider needs none)
+openai==1.58.1          # DeepSeek / Qwen / Ling / OpenAI / local vLLM (OpenAI-compatible)
+anthropic==0.42.0       # Claude
+
+# Utils
+python-dotenv==1.0.1
+httpx==0.28.1
+
+# Dev / test
+pytest==8.3.4
+pytest-asyncio==0.25.2

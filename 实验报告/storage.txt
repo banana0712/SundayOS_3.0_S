@@ -1,0 +1,1901 @@
+                                       From Storage to Experience: A Survey on the Evolution of LLM Agent
+                                                                      Memory Mechanisms*
+
+                                            Jinghao Luo2, Yuchen Tian1, Chuxue Cao3, Ziyang Luo1, Hongzhan Lin1,
+                                                            Kaixin Li4, Chuyi Kong1, Ruichao Yang5, Jing Ma1§
+
+                                                      1Hong Kong Baptist University 2South China Normal University
+                                                              3Hong Kong University of Science and Technology
+
+                                           4National University of Singapore 5University of Science and Technology Beijing
+                                          FeishuEcho@outlook.com, {yctian, majing}@comp.hkbu.edu.hk
+
+arXiv:2605.06716v1 [cs.AI] 7 May 2026                        Abstract                              integrate LLMs with external tools and modular
+                                                                                                   components, thereby enabling planning, tool use,
+                                            Large Language Model (LLM)-based agents                and environmental interaction (Yao et al., 2022;
+                                            have fundamentally reshaped artificial intelli-        Qin et al., 2024; Luo et al., 2025c). However,
+                                            gence by integrating external tools and plan-          the inherent statelessness of LLMs poses a crit-
+                                            ning capabilities. While memory mechanisms             ical challenge: it hinders agents from maintain-
+                                            have emerged as the architectural cornerstone          ing logical consistency across complex, multi-step
+                                            of these systems, current research remains frag-       tasks and precludes learning from prior interac-
+                                            mented, oscillating between operating system           tions, often resulting in recurring reasoning er-
+                                            engineering and cognitive science. This theo-          rors (Huang et al., 2023a; Xiong et al., 2025; Cao
+                                            retical divide prevents a unified view of tech-        et al., 2026b). Consequently, the development of
+                                            nological synthesis and a coherent evolution-          effective memory mechanisms has emerged as an
+                                            ary perspective. To bridge this gap, this sur-         architectural cornerstone. By mitigating this defi-
+                                            vey proposes a novel evolutionary framework            ciency, memory mechanisms underpin the robust
+                                            for LLM agent memory mechanisms, formaliz-             operation of LLM-based agents and pave the way
+                                            ing the development process into three stages:         for self-evolution (Wang et al., 2023; Packer et al.,
+                                            Storage (trajectory preservation), Reflection          2023; Wu et al., 2025a).
+                                            (trajectory refinement), and Experience (tra-
+                                            jectory abstraction). We first formally define            We identify two primary obstacles to advancing
+                                            these three stages before analyzing the three          memory mechanisms for LLM agents: (i) Paradig-
+                                            core drivers of this evolution: the necessity for      matic Fragmentation: Existing methodologies os-
+                                            long-range consistency, the challenges in dy-          cillate between two weakly integrated paradigms.
+                                            namic environments, and the ultimate goal of           One focuses on engineering, adopting design prin-
+                                            continual learning. Furthermore, we specifi-           ciples from operating systems for the management
+                                            cally explore two transformative mechanisms            of memory data (Packer et al., 2023; Hu et al.,
+                                            in the frontier Experience stage: active explo-        2024; Kang et al., 2025), while the other draws in-
+                                            ration and cross-trajectory abstraction. By syn-       spiration from cognitive science and psychology to
+                                            thesizing these disparate views, this work offers      simulate mechanisms for the formation, consolida-
+                                            robust design principles and a clear roadmap           tion, and retrieval of human memory (Zhong et al.,
+                                            for the development of next-generation LLM             2023; Hou et al., 2024; Xu et al., 2025b). This
+                                            agents.                                                lack of synergistic progress results in a fragmented
+                                                                                                   body of research, preventing the formation of a
+                                       1 Introduction                                              coherent and continuous trajectory of evolution.
+                                                                                                   (ii) The Absence of Technological Synthesis: Al-
+                                       In recent years, the rapid advancement of Large             though numerous methods address isolated stages
+                                       Language Models (LLMs) has fundamentally re-                of memory processing, the field lacks a cohesive
+                                       shaped the landscape of artificial intelligence (Tou-       summary of the critical technologies that have his-
+                                       vron et al., 2023; Hurst et al., 2024; Yang et al.,         torically propelled memory mechanism advance-
+                                       2025a). To augment the capabilities of LLMs, re-            ment (Xu et al., 2025b; Yang et al., 2025b; Zhang
+                                       searchers have developed LLM-based agents that              et al., 2025j). Existing surveys have not sufficiently
+                                                                                                   isolated these key technical drivers from general
+                                           *Our continuously updated list of papers and resources  methodologies (Wu et al., 2025b; Du et al., 2025b;
+                                       is available at https://github.com/FeishuLuo/
+                                       Evolving-LLM-Agent-Memory-Survey.
+
+                                           Equal contribution.
+                                           Project leader.
+                                           §Corresponding author.
+LLM Agent Workflow                              Storage                                                                                                 Experience
+                                                                                                                                                         Explicit
+         LLM Agent                              Linear                               Vector                       Structured                                                  Synthesis
+            Step 0
+                                                   Agent                                   Agent  Vector Space          Formalize     Nodes & Edges
+         Reason                                                                                                                         Database
+          Act                                                  Write                                                                                              Library
+                                                Trajectory                                                                          Layer 1 Layer 2
+    Env                                                                                                           Trajectory                            Agent                   Evolver
+                                                                      Linear Window
+               Step*N    Query                                                                        Embed                                                                *N
+                                                                                     Trajectory
+    Env                    Historical                                                                                                                             Trajectory
+        LLM Agent          Trajectory
+           Step N      State Summary                                                                                         Agent
+                       Chain of Thought
+        Reason         Action Execution                                                                                                                 Implicit
+          Act          Environmental
+                       Feedback                 Memory Mechanisms Evolution Path                                                                                                Update
+
+...                    Solution                 Store                                Reflect                      Abstract                                        Latent net
+
+                                           Env                                                                                                           Agent             *N   Evolver
+
+                                                         Storage                                  Reflection                        Experience          Hybrid    Trajectory
+
+                                                Reflection                                                                                               Agent                  Update
+                                                 Introspection
+                                                                                   Environment                    Coordination
+                                                                        Derive
+                                                             Agent                                   Observation             Trajectory 1                         Latent net           Library
+                                                                                                                                                                                Synthesis
+                                                                                                      Derive      Agent 1
+
+                                                                                                                                    Derive
+
+                                                                       Repository       Agent     Repository                   Interpreter  Repository                          Evolver
+                                                       Trajectory                    Trajectory                     Agent 2  Trajectory 2
+                                                                                                                                                                            *N
+
+                                                                                                                                                                    Trajectory
+
+                       Figure 1: Overview of the LLM agent memory mechanisms.
+
+Wu and Shu, 2025; Cao et al., 2025). Consequently,                                                ory mechanisms, this survey follows a "Why-How-
+the core technologies remain obscure, leaving fu-                                                 What" logic to address three interconnected re-
+ture researchers without a clear roadmap of which                                                 search questions: RQ1: Why do memory mech-
+innovations are robust enough to build upon.                                                      anisms evolve? reveals how the requirements for
+                                                                                                  long-range consistency, dynamic environment in-
+   While recent surveys have examined memory                                                      teraction, and continual learning serve as core cat-
+mechanisms for LLM agent systems, they lack a                                                     alysts driving mechanistic evolution (§3); RQ2:
+unified evolutionary perspective. This limitation                                                 How do memory mechanisms evolve? delineates
+obscures the internal drivers of memory develop-                                                  the evolutionary path from Storage to Reflection
+ment and impedes the in-depth exploration of ar-                                                  and then to Experience, analyzing the fundamental
+chitectures for next-generation agents. Specifically,                                             structural shifts involved (§4); and RQ3: What
+Zhang et al. (2024) focuses on the classification                                                 changes does Experience bring? provides an in-
+of engineering modules, but fails to systematically                                               depth analysis of how frontier paradigms in the
+expound on the logic behind critical technological                                                Experience stage, such as proactive exploration
+transformations throughout their development. Fur-                                                and cross-trajectory abstraction, address the bottle-
+thermore, while Hu et al. (2025b) addresses the                                                   necks in agent adaptability and autonomy (§5).
+dynamic processes of memory, its perspective re-
+mains confined to static functional categorizations,                                                 Finally, we outline future directions for LLM
+failing to reveal the underlying principles of dy-                                                agent memory mechanisms. First, we emphasize
+namic evolution inherent to memory mechanisms.                                                    that memory mechanisms should adopt more dy-
+                                                                                                  namic triggering modes based on task types (§6).
+   To address these limitations, we propose a                                                     Second, we highlight that the construction of work-
+framework for memory mechanisms in LLM-based                                                      ing memory is a vital core of memory mechanisms.
+agents centered on dynamic evolution. We for-                                                     Next, we advocate for the development of more
+malize this evolutionary process into three distinct                                              comprehensive datasets for memory mechanisms,
+stages: (i) Storage, which constructs diverse stor-                                               especially for the Experience stage. Finally, we es-
+age modes focused on the faithful recording of                                                    tablish the coordination of distributed shared mem-
+historical interaction trajectories; (ii) Reflection,                                             ory and the fusion of multimodal memory as criti-
+which introduces a loop for dynamic evaluation to                                                 cal breakthroughs for future research.
+actively manage and refine these records; and (iii)
+Experience, which implements prospective guid-                                                       The overview of this survey and related datasets
+ance by abstracting high-level behavior patterns                                                  is documented in Appendix §A and §D, respec-
+and strategies from clustered interactions (§2).                                                  tively.
+
+   Building upon the proposed three stages of mem-
+2 Background                                           encapsulates critiques or corrective insights:
+
+2.1 The LLM Agent Framework                            mi = Fref (i | ),                               (4)
+
+We formalize an LLM-based agent as a decision-         where  represents the evaluation criteria. The key
+making entity parameterized by , interacting with      distinction lies in the storage protocol: while stan-
+a dynamic environment E. The agent's operation is      dard Storage preserves raw interaction logs, Reflec-
+governed by a policy , which maps the current          tion acts as a semantic filter, injecting processed in-
+context to a probability distribution over the action  sights back into the repository (M  M  {mi}).
+space A.                                               Once stored, mi becomes an independent memory
+                                                       entry, decoupling the valuable logic from the spe-
+   At time step t, the agent receives an observation   cific noise of the original trajectory i and serving
+ot  O and retrieves relevant information mt from       as a refined reference for future retrieval.
+its memory module M. The generated action at is        Experience. Experience represents the highest cog-
+sampled as follows:                                    nitive layer, characterized by cross-trajectory ab-
+                                                       straction. This stage aims to satisfy the Minimum
+at  (at | I, ot, mt),                       (1)        Description Length (MDL) principle by compress-
+                                                       ing redundant trajectories into generalized schemas.
+ where I denotes the static system instruction,        Let Tbatch  Mraw be a subset of topologically
+and mt = Retrieve(M, ot) represents the context-       similar trajectories. We define the Experience func-
+specific memory. Crucially, we distinguish be-         tion Fexp as an inductive operator that extracts a
+tween the global memory repository M and its           set of universally applicable rules K:
+retrieved instantiation mt at time t. In this survey,
+we define "LLM agent memory" M as an external-         Tbatch = {i | Sim(i, j) > },                    (5)
+ized repository that bridges the frozen parametric
+knowledge in  and the evolving environmental           K = Fexp(Tbatch) s.t. |K|            | |. (6)
+dynamics.
+
+2.2 Taxonomy                                                                        Tbatch
+
+We classify the evolution of memory mechanisms          Formally, K serves as a policy prior that ele-
+into three tiers based on the level of information     vates  beyond rule consistent actions, enabling
+abstraction and cognitive processing.                  decision-making at a higher level of abstraction.
+
+Storage. Storage serves as the foundational layer.     Summary & Ideas - Defining the Stages of memory mechanisms
+Unlike higher-level mechanisms, storage preserves
+trajectories with minimal transformation, maintain-         Defining the Stages of memory mechanisms We provide a formal
+ing a one-to-one correspondence between memory              definition for the workflow of actions in LLM agents and character-
+entries and execution traces. We define a trajec-           ize the memory mechanisms within this process as three stages of
+tory  as a chronological sequence of observation-           evolution: Storage, Reflection, and Experience. (cf. Figure 1)
+action pairs within a task session:                         We define these mechanisms based on the degree of utilization of
+                                                            memory, without introducing other related technical definitions.
+                                                            The three stages of evolution do not represent complete substitution
+                                                            but are framed within an evolutionary perspective; a mechanism for
+                                                            memory may still retain certain characteristics of the preceding stage,
+                                                            even as its essence has transitioned into the subsequent stage.
+
+ = (o1, a1), . . . , (oT , aT ).            (2)
+
+The raw storage Mraw is formally defined as a          3 Evolutionary Drivers
+
+cumulative set of historical trajectories:             To facilitate a comprehensive understanding regard-
+                                                       ing the evolution of memory mechanisms for LLM
+Mraw = {i}Ni=1, i  T ,                      (3)        agents, we first address the fundamental question
+                                                       RQ1: Why do memory mechanisms evolve? In
+where T represents the space of all possible inter-    this section, we examine three core requirements
+action trajectories.                                   for LLM agents to investigate how they drive the
+                                                       progression of memory mechanisms, thereby bridg-
+Reflection. Reflection is modeled as a semantic        ing the gap between models from pretraining and
+transformation mapping Fref : T  S, where S            the real world.
+denotes the space of evaluated or corrected reason-
+ing paths. Similar to the storage phase, Reflection    3.1 Long-Term Consistency
+functions as a mechanism to populate the global
+repository M, but with a focus on quality density      Consistency across long horizons constitutes a pre-
+rather than raw fidelity.                              requisite for the deployment of LLM agents within
+
+   It operates by analyzing a completed trajectory
+i to generate a refined memory unit mi, which
+the real world and serves as the primary impetus        Temporal Validity of Knowledge                    Causal Structure of Environment
+for the early evolution of memory mechanisms.
+Although large language models exhibit robust lo-              Memory       Top2                Solution     Causal            Causal
+cal coherence within the context window, they fre-               Current  Retrieval                       Dependency        Dependency
+quently encounter issues such as redundant explo-
+ration, accumulation of errors, and discontinuities                                    Current
+in reasoning during interactions involving multi-
+ple steps. We analyze the necessity of consistency             As time progress                            Action    Environmental  Environmental
+over long durations through two dimensions: con-                                                          Execution     Feedback       Feedback
+sistency of state and consistency of goals.             Query
+Consistency of State. The inherent statelessness               Memory
+of LLM agents results in a deficiency of inter-                   Stale     Top2
+nal mechanisms for explicit anchoring, which has                          Retrieval
+catalyzed the emergence of modules for mem-
+ory (Huang et al., 2023b; Sumers et al., 2023;                                       Stale      Solution   Long Time Gap k                 k+
+Packer et al., 2023). First, these modules main-
+tain internal states for reasoning to ensure the co-    Figure 2: The Drivers in Dynamic Environments.
+herence of thought (Yao et al., 2023; Sun et al.,
+2025c); second, they synchronize the cognition of       et al., 2024). As the environment progresses, strate-
+the agent with the external world to prevent erro-      gies for action that were once correct may experi-
+neous decisions arising from inaccurate internal        ence a gradual loss of utility. Crucially, knowledge
+perceptions (Majumder et al., 2023; Yang et al.,        that is outdated often fails without overt indica-
+2025b); finally, they internalize interactions into     tion (Luu et al., 2022; Kalai and Vempala, 2023;
+persistent traits of the persona to ensure uniformity   Kasai et al., 2024); although factually incorrect,
+in behavior (Park et al., 2023; Westhäußer et al.,      such information may still exhibit significant rel-
+2025; Liang et al., 2025).                              evance in its semantic representation. This neces-
+Consistency of Goals. Due to the inherent nature        sity propels the evolution of memory mechanisms
+of planning by the agent, LLM agents frequently         from the paradigm of static storage toward that of
+optimize for actions with local consistency, which      active management, integrating awareness of tem-
+results in a departure from objectives at the global    poral factors, policies for decay, and methods for
+level (Huang et al., 2024; Everitt et al., 2025).       retrieval with enhanced flexibility (Zhong et al.,
+Memory mechanisms mitigate this drift by provid-        2023; Siyue et al., 2024; Salama et al., 2025; Du
+ing persistent and explicit goals at a high level (Hu   et al., 2025a; Houichime et al., 2025).
+et al., 2024; Li et al., 2025e). Furthermore, in        The Causal Structure of the Environment.
+systems with multiple agents, shared memory re-         Causal relationships within the complex real
+garding goals can transform isolated behaviors into     world involve delayed outcomes and cascading ef-
+coordinated execution by the collective, thereby        fects (Joshi et al., 2024; Cui et al., 2025; Liu et al.,
+maintaining the unity of the final objective (Gao       2025f). This necessitates that memory mechanisms
+et al., 2024; Liu et al., 2025c).                       transcend the mere documentation of interactions
+                                                        to construct dependencies for causality of a com-
+3.2 Dynamic Environments                                plex nature across steps in time (Majumder et al.,
+                                                        2023; Du et al., 2025c; Raman et al., 2025). Con-
+The dynamic characteristics of the environment          sequently, planning with robustness is achieved
+constitute a more enduring impetus for the evolu-       through the realization of internal worlds character-
+tion of memory mechanisms. In contrast to static        ized by consistency in causality (Tang et al., 2024a;
+benchmarks, the interplay between temporal valid-       Kim and won Hwang, 2025; Bohnet et al., 2025).
+ity and causality in real-world settings renders fixed
+patterns for reasoning and static forms of storage      3.3 Continual Learning
+rapidly fragile.
+The Temporal Validity of Knowledge. Knowl-              Continual learning represents the ultimate require-
+edge within environments of a dynamic na-               ment for LLM agents. Deployment within an open
+ture is typically conditional rather than eternally     world inevitably involves encountering patterns
+valid (Lazaridou et al., 2021; Jang et al., 2022; Ko    that reside outside of the distribution of training.
+                                                        Without the effective internalization of these mem-
+                                                        ories into actionable knowledge for reuse, the LLM
+                                                        agent will remain confined to repetitive cycles of
+                                                        trial and error. Therefore, memory mechanisms
+                                                        must not only enable the reproduction of historical
+                                                        trajectories but also address the bottlenecks of scal-
+                                                        ing and the requirements for abstraction inherent
+                                                        in dense memory.
+                                                        Constraints on The Storage of Memory. Inter-
+action with the real world over extended durations                             method of recording, in which interaction trajec-
+results in the linear expansion of memory in stor-                             tories are treated as a stream of tokens ordered by
+age (Hu et al., 2023; Packer et al., 2023). Early                              time and managed typically through a strategy of
+memory mechanisms utilized techniques such as                                  First-In, First-Out (FIFO). Research focuses on the
+vectorization to scale storage capacity. However, re-                          extension of the window of context via modifica-
+cent research indicates that the unrestricted expan-                           tions to the mechanism of attention or the encoding
+sion of memory is detrimental to the performance                               of position (Ratner et al., 2022; Xiao et al., 2023;
+of LLM agents, as errors propagate within the sys-                             Jin et al., 2024), as well as the achievement of in-
+tem for memory and contaminate the efficacy of                                 formation sparsification through the mechanical
+learning (Xiong et al., 2025; Srivastava and He,                               reduction of noise (Zhang et al., 2023b; Jiang et al.,
+2025). This necessitates the exploration of more                               2023; Xiao et al., 2024).
+strategic policies for the addition and deletion of                            Vector. Vector storage encodes interaction trajecto-
+information within memory mechanisms (Du et al.,                               ries into a high-dimensional space, which greatly
+2025b; Liu et al., 2025e).                                                     expands the capacity for the storage of memory.
+The Requirement for Experience. The memory                                     Such methods shift the focus of research from the
+of most LLM agents is of an episodic nature and                                design of storage toward the optimization of re-
+remains restricted to specific tasks (Shinn et al.,                            trieval, including retrieval based on semantic prox-
+2023; Wang et al., 2023). This limitation necessi-                             imity (Melz, 2023; Liu et al., 2024; Das et al., 2024)
+tates the transformation of raw clusters of memory                             as well as weighted retrieval that incorporates tem-
+into experience to provide guidance for behavior                               poral decay and scores for importance (Zhong et al.,
+across future scenarios. Consequently, research                                2023; Park et al., 2023).
+on memory mechanisms has begun to explore var-                                 Structured. Structured storage employs explicit
+ious methodologies for the abstraction of experi-                              data architectures to transcend the limitations on
+ence (Tang et al., 2025; Cai et al., 2025b; Xia et al.,                        capacity inherent in linear storage and the ambigu-
+2025b; Alakuijala et al., 2025; Guo et al., 2025).                             ity associated with vector retrieval. For instance,
+                                                                               these methods utilize the tabular formats of rela-
+   Summary & Ideas - Evolutionary Drivers                                      tional databases for the storage of memory (Hu
+         Consistency over long durations, dynamic environments, and the        et al., 2023; Xue et al., 2023; Lee and Ko, 2025),
+         capacity for continual learning drive the evolution of LLM agents     partition memory into distinct hierarchies to ad-
+         from static models into autonomous systems capable of operation       dress the trade-off between storage capacity and
+         within the real world over extended horizons.                         speed of retrieval (Packer et al., 2023; Lu et al.,
+         The driving force for the evolution of memory mechanisms stems        2023), and directly model the history of interac-
+         from a leap in research vision: from maintaining logical consistency  tion as a topological network of entities and rela-
+         in complex reasoning, to dynamic adaptation in environmental per-     tions (Modarressi et al., 2024; Li et al., 2024).
+         ception, and finally to the autonomous evolution of LLM agents.
+                                                                               4.2 Reflection
+4 Evolutionary Path
+                                                                               Mechanisms for storage fail to address the quality
+Building upon these evolutionary drivers, we con-                              of memory, as raw trajectories are inevitably con-
+duct an investigation in-depth into RQ2: How do                                taminated by hallucinations, errors in logic, and
+memory mechanisms evolve? We categorize the                                    ineffective attempts. This limitation necessitates
+trajectory of evolution into three primary stages:                             a transition of memory mechanisms toward reflec-
+storage, reflection, and experience.                                           tion. In this phase, memory is transformed from
+                                                                               a passive recorder into an active critic, utilizing
+4.1 Storage                                                                    various signals of feedback to perform correction
+                                                                               and denoising of past trajectories to enhance the
+The stage of storage serves as the starting point                              quality of the repository of memory.
+for memory mechanisms, where the primary ob-                                   Introspection. Introspective reflection conceptu-
+jective is to resolve the contradiction between the                            alizes the LLM agent as an autonomous critic that
+limited window of context within Large Language                                leverages the internal knowledge of the model to
+Models and the continuously expanding history of                               refine memory without the requirement for external
+interaction. Memory mechanisms during this phase                               feedback. Research in this area focuses on the cor-
+are dedicated to the faithful preservation of interac-                         rection of errors within trajectories (Liu et al., 2023;
+tion trajectories i to the greatest extent possible to
+maintain consistency in the actions of the agent.
+Linear. Linear storage represents the most direct
+Zhang et al., 2025h; Bohnet et al., 2025; Cao et al.,   sell et al., 2025; Wan et al., 2025) or directly ab-
+2026a), the maintenance of the lifecycle of mem-        stracting them into executable entities (Wang et al.,
+ory (Li et al., 2025a; Kang et al., 2025; Chhikara      2025g; Zhang et al., 2025a; Shi et al., 2025a).A
+et al., 2025), and the compression and distillation     further line distills accumulated trajectories into
+of long trajectories (Huang et al., 2025b; Han et al.,  an evolvable skill library, coupling procedural ab-
+2025; Yang et al., 2025b; Ye et al., 2025).             stractions with a lifecycle of induction, reuse, and
+Environment. Environmental reflection treats sig-       refinement (Zhang et al., 2026; Ni et al., 2026).
+nals from the external environment as the primary       Implicit. Implicit experience internalizes inter-
+anchors for the reflection of memory to mitigate        action histories into model parameters, aiming to
+the issue of hallucinations. This approach focuses      resolve the inference overhead and context limi-
+on the utilization of outcomes from the real world      tations inherent in explicit memory. Implicit ex-
+to proactively optimize policies for behavior (Sun      perience can be realized by directly converting
+et al., 2024; Yan et al., 2025b,a) and calibrate in-    experiences into the model's intrinsic capabilities
+ternal models of the world (Sun et al., 2024; Xiao      through fine-tuning (Alakuijala et al., 2025; Zhai
+et al., 2025; Sun et al., 2025b).                       et al., 2025; Zhang et al., 2025f; Tandon et al., 2025;
+Coordination. Collaborative reflection extends          Yu et al., 2025b). Furthermore, the research com-
+this process to the collective, leveraging the di-      munity is exploring the transformation of experi-
+vision of roles and consensus to overcome bot-          ence into latent variables within the model's hidden
+tlenecks in the cognition of individuals. This          layers, which are then dynamically invoked during
+mechanism facilitates the reflection of memory          the inference process (Zhang et al., 2025d,c).
+through the construction of societies of heteroge-      Hybrid. Hybrid experience establishes a dynamic
+neous agents (Bo et al., 2024; Balestri and Pesca-      cycle of accumulation and internalization. Through
+tore, 2025; Wang et al., 2025d; Ozer et al., 2025).     a mechanism for experience transfer, explicit expe-
+                                                        rience is treated as a high-capacity cache, which
+4.3 Experience                                          is subsequently compressed and internalized into
+                                                        the implicit weights of the model through periodic
+Although reflection effectively mitigates noise and     updates of parameters (Wu et al., 2025a; Liu et al.,
+hallucinations, reflected memories are frequently       2026b; Ouyang et al., 2025; Xia et al., 2026).
+fragmented and exhibit a high degree of depen-
+dence on context. This results in significant costs        Summary & Ideas - Evolutionary Path
+for retrieval and a heavy burden of inference for                This chapter traces how LLM agent memory mechanisms evolve
+memory mechanisms when addressing new tasks.                     from faithful recording in Storage, to error correction in Reflection,
+Moreover, recent research indicates that LLM                     and finally to high-order abstraction in Experience.
+agents often demonstrate a pronounced tendency to                Although a portion of the literature adopts the terminology of ex-
+follow successful trajectories; corrected trajectories           perience, these works may not fall within the conceptual scope of
+devoid of abstraction may still induce errors result-            experience established for this survey.
+ing from minor shifts in context. Consequently,                  Due to space constraints, we do not provide detailed descriptions of
+memory in the stage of experience extracts univer-               these works within the evolutionary path; instead, some representa-
+sal heuristic wisdom by isolating similar trajecto-              tive studies are presented in the Appendix §B.
+ries from their specific contexts. This approach
+compresses the originally vast repository of mem-       5 Transformative Experience
+ory and enables generalization to unknown environ-
+ments through a form of intuition similar to that of    Following the exposition of the evolutionary tra-
+humans. A detailed comparison between reflection        jectory for memory mechanisms, we address RQ3:
+and experience is summarized in Table 1.                What changes does Experience bring? In this
+Explicit. Explicit experience represents the inte-      section, we elucidate the distinct technical char-
+gration of symbols, extracting human-readable and       acteristics of experience as a novel stage in the
+editable experiences with a high level of general-      development of memory mechanisms.
+izability from clusters of interaction trajectories.
+This allows the LLM agent to achieve a highly in-       5.1 Active Exploration
+terpretable process of self-evolution by either con-
+cretizing experiences into natural language poli-       Active exploration leverages memory mechanisms
+cies (Cai et al., 2025b; Zhang et al., 2025b; Has-      to transform LLM agents from passive recorders of
+                                                        information into collectors of experience driven by
+                                                        goals. In the stage of Experience, the core capabil-
+                                                        ity of memory mechanisms is no longer confined
+Dimension             Reflection                                              Experience
+Functional signature
+Output form           Intra-trajectory transformation: Fref(i | ) = mi        Inter-trajectory induction: Fexp(Tbatch) = K
+                      Refined memory unit mi tied to the original task        Universal rules or skills K detached from any
+Retrieval dependency  context                                                 specific scenario
+                                                                              Applicable to unseen scenarios as a policy prior,
+Representative works  Retrieved to assist semantically similar past tasks at  without trajectory-level matching
+                      inference time                                          FLEX (Cai et al., 2025b), MemSkill (Zhang
+                                                                              et al., 2026), SkillRL (Xia et al., 2026)
+                      Reflexion (Shinn et al., 2023), CLIN (Majumder
+                      et al., 2023), AgentFold (Ye et al., 2025)
+
+Table 1: Structural comparison between Reflection and Experience. While Reflection injects refined units mi back
+into M to assist similar future tasks, Experience extracts a separate rule set K that serves as a policy prior for unseen
+
+scenarios, marking a fundamental shift from trajectory-local refinement to cross-trajectory abstraction.
+
+to the storage of history, but extends to the acqui-   Trajectory Groups             Contrastive    Shallow level
+sition of valuable experience through the active       Trajectory 1                   Induction     Intermediate
+exploration of the environment. Here, exploration      Trajectory 2
+is framed as a memory-centric process, where prior                                       Action          level
+experience guides its direction and its outcomes are   Trajectory N                   Distillation
+abstracted back into memory.                                                                        Deep level
+                                                                                     Code
+Exploration Mechanisms. The driving mecha-                                     Encapsulation
+nisms for active exploration have transitioned from
+traditional strategies of random exploration toward                              Gradient
+more profound drivers of intrinsic motivation and                             Internalization
+feedback. Drivers based on signals of reward guide
+LLM agents to explore state spaces of greater value    Figure 3: Overview of Cross-Trajectory Abstraction.
+through the design and optimization of immediate
+reward functions (Zheng et al., 2024; Pan et al.,      mulation of experience to enhance the precision
+2025; Sun et al., 2025a); drivers based on curricula   of decisions for LLM agents during planning over
+facilitate exploration tasks of increasing difficulty  long horizons (Shi et al., 2025b; Bidochko and
+through the dynamic generation and adjustment of       Vyklyuk, 2026).
+sequences for tasks (Wei et al., 2025c; Ahn et al.,
+2022); and drivers based on reuse enable explo-        5.2 Cross-Trajectory Abstraction
+ration of high efficiency through the abstraction
+and reuse of trajectories from history (Wang et al.,   Cross-trajectory abstraction compresses isolated
+2025f; Cai et al., 2025b).                             trajectories into universal patterns, transforming
+                                                       scattered and episodic experiences into stable pri-
+Exploration Dimensions. The core of active ex-         ors for policy. This enables LLM agents to tran-
+ploration resides in the utilization of memory mech-   scend specific sequences of actions and engage in
+anisms to facilitate the expansion of the boundaries   decision making at higher dimensions of abstrac-
+of capability for LLM agents. This process can be      tion, which provides prospective guidance for tasks
+categorized into three critical dimensions: explo-     that are unknown and facilitates an understanding
+ration of breadth aims to alleviate cognitive defi-    of underlying regularities.
+ciencies of LLM agents in unfamiliar environments,     Abstraction Mechanisms. The mechanism for
+transforming memory into experience that is struc-     abstraction serves as the core operator for the trans-
+tured through mechanisms of curiosity (Qi et al.,      formation of groups of raw interaction trajectories
+2025; Zhai et al., 2025; Cheng et al., 2025a); explo-  into experience that is universal. In contrast to
+ration of depth focuses on the extraction of skills    mechanisms for reflection that focus on the correc-
+of a high order within vertical tasks, driving the     tion of errors within single trajectories, abstraction
+evolution of memory from the basic following of        during the stage of experience emphasizes the ex-
+instructions to complex experiential strategies (Xia   ecution of inductive operations across trajectories.
+et al., 2025b; Liu et al., 2025a); and exploration     According to its operational logic, this process in-
+of strategy centers on the dynamic optimization        cludes contrastive induction, which utilizes the op-
+of paths for decision making, leveraging the accu-     position between successful and failed trajectories
+                                                       to delineate the boundaries of policy with preci-
+                                                       sion (Forouzandeh et al., 2025; He et al., 2024c);
+                                                       the distillation of actions of fine granularity into
+                                                       patterns of thought of a high order through the
+                                                       chunking and aggregation of behavioral sequences
+across multiple levels of granularity (Fang et al.,                           work has begun to address this challenge through
+2025b; Latimer et al., 2025); the encapsulation of                            autonomous retrieval controllers (Du et al., 2025a).
+recurring patterns of behavior into program func-                             Future research demands that memory mechanisms
+tions that are reusable by leveraging the composi-                            autonomously evaluate whether a task requires the
+tionality of code (Yang et al., 2025c; Zhang et al.,                          introduction of additional memory and determine
+2025e; Wang et al., 2025g); and the internaliza-                              the specific type of memory to be integrated, ensur-
+tion of groups of trajectories into the parameters of                         ing that memory mechanisms function as resources
+the model through techniques for fine-tuning (Ding                            that are invoked on demand.
+et al., 2025; Chen et al., 2025c).                                            Organization of Working Memory. As the com-
+Abstraction Granularity. The hierarchy of ab-                                 plexity of tasks and the horizons encountered by
+straction for memory mechanisms determines the                                LLM agents continue to expand, the construction
+boundaries for generalization and the degree of in-                           of working memory within tasks has emerged as a
+terpretability for experience. Based on the degree                            primary bottleneck. LLM agents must reconstruct
+to which the results of abstraction deviate from orig-                        trajectories from the past into memory intervals that
+inal trajectories, these can be categorized into three                        are dynamic and plastic to facilitate the effective
+progressive levels: abstraction at the shallow level                          allocation of attention (Hu et al., 2024; Luo et al.,
+retains a portion of semantic logic, utilizing "rules"                        2025a). Future research may focus on the isolation
+described in natural language as experience (Cao                              of interval memory, the retrospective integration of
+et al., 2025; Chen et al., 2025d; Wei et al., 2025a;                          critical nodes for decision making, and the adap-
+Hayashi et al., 2025); abstraction at the intermedi-                          tive pruning of working memory (Sun et al., 2025c;
+ate level completely removes redundancies of natu-                            Zhang et al., 2025i; Nan et al., 2025).
+ral language, extracting only modular skeletons for                           Benchmark for Experience. Existing datasets
+execution as experience (Wang et al., 2024d; Liu                              primarily evaluate the capacity for retrieval and
+et al., 2025g; Yu et al., 2025a); and abstraction at                          denoising of memory within the stages of storage
+the deep level compresses the distribution of tra-                            and reflection, whereas the evaluation of the ca-
+jectories into the weights of the model, enabling                             pacity for abstraction and generalization during
+the complete transformation of experience into in-                            the stage of experience remains significantly in-
+tuition for decision making (Cheng et al., 2025b;                             sufficient (Appendix §D). The assessment of the
+Luo et al., 2025b; Wang et al., 2025b).                                       lifecycle of experience is closely linked to the ca-
+                                                                              pacity for meta-learning in LLM agents, which
+   Summary & Ideas - Transformative Experience                                is essential for the realization of systems for self
+         Within the novel stage of memory mechanisms characterized by         evolution based on active generalization (Behrouz
+         Experience, active exploration and abstraction across trajectories   et al., 2024; Wei et al., 2025a). Consequently, the
+         represent the two primary features of this phase.                    path of evolution we propose provides a valuable
+         The feedback loop between exploration and abstraction serves as the  foundation for guiding the development of these
+         central engine that drives the autonomous and continuous evolution   benchmarks.
+         of LLM agents during the phase of experience.                        Distributed Shared Memory. Collaboration
+         Memories characterized by a high degree of abstraction during the    among multiple agents represents the essential path-
+         phase of experience also enable agents to circumvent challenges      way toward the realization of "Organizations." This
+         frequently associated with conventional memory mechanisms (Xiong     establishes distributed shared memory as central to
+         et al., 2025; Gharat et al., 2025; Srivastava and He, 2025).         current research (Wu and Shu, 2025). At present,
+                                                                              mechanisms for shared memory rely primarily on
+6 Future Directions                                                           communication through explicit dialogue, which is
+                                                                              not only constrained by bottlenecks in bandwidth
+In this section, we discuss emerging prospects and                            but is also prone to the introduction of noise dur-
+promising directions for memory mechanisms for                                ing the process of exchange (Tran et al., 2025;
+LLM agents.                                                                   Liao et al., 2025; Zou et al., 2025). To overcome
+Active Memory Perception. Currently, certain                                  current communication constraints, future efforts
+memory mechanisms still utilize modes of passive                              should prioritize the development of consensus
+triggering, which necessitates that LLM agents per-                           memory systems. These systems aim to achieve ef-
+form indiscriminate retrieval of a significant por-                           ficient synchronization between individual perspec-
+tion of the memory repository (Wang et al., 2025c;                            tives and collective knowledge, thereby fostering a
+Rasmussen et al., 2025). More importantly, the per-
+sistent retrieval of irrelevant or obsolete memories
+can disrupt the coherence in reasoning of the LLM
+agent (Xu et al., 2025b; Tan et al., 2025). Recent
+more agile process of socialized experience evolu-        fied benchmark currently exists for comprehensive
+tion (Yuen et al., 2025; Rezazadeh et al., 2025).         evaluation across all stages. Moreover, variations
+Multimodal Memory. Multimodal memory rep-                 in foundation models, environments, and prompts
+resents a significant direction for the future devel-     across original studies render direct numerical com-
+opment of memory mechanisms for LLM agents.               parison potentially misleading.
+This direction requires the integration of states of      Relation to Established Learning Paradigms.
+visual perception, processes of linguistic reasoning,     The experience stage, particularly implicit expe-
+and other perceptual modalities into memory units         rience, intersects with fine-tuning, reinforcement
+characterized by unified temporality and seman-           learning, and meta-learning at a technical level.
+tics (Liu et al., 2025d; Zhou et al., 2025a; He et al.,   This taxonomy does not position experience as
+2025). For embodied intelligence in particular, the       an entirely novel learning paradigm; rather, it em-
+integrity of internal models of the world directly in-    phasizes how these established techniques are de-
+fluences the planning and execution of tasks (Feng        ployed within memory-centric LLM agent archi-
+et al., 2025b; Long et al., 2025b). To achieve this       tectures, serving as a critical intermediary between
+objective, existing research explores novel memory        interaction trajectories and parameter updates.
+mechanisms by investigating multimodal abstrac-           Temporal Coverage and Recency Bias. Research
+tion, temporal alignment across modalities, and the       on memory mechanisms for LLM agents has expe-
+efficient consolidation of memory. A detailed ex-         rienced rapid growth from 2024 to 2025, with the
+position of current approaches and open challenges        experience stage emerging as a coherent research
+is provided in Appendix §C.                               direction only in the latter half of 2025. This tem-
+                                                          poral distribution is reflected in the coverage of this
+7 Conclusion                                              survey and brings two methodological implications:
+                                                          (i) early influential works may not have received
+This survey provides a systematic review of mem-          attention commensurate with their historical con-
+ory mechanisms for LLM agents, establishing an            tributions, and (ii) some recent preprints included
+evolutionary framework that encompasses three             in this survey have not yet undergone formal peer
+progressive stages: storage, reflection, and expe-        review. To balance academic rigor with timeliness,
+rience. Our analysis demonstrates that memory             this survey prioritizes works that propose novel
+evolution is not merely the expansion of storage          architectures or demonstrate reproducible results.
+capacity but fundamentally involves the enhance-
+ment of information density and a transformation          Acknowledgment
+across cognitive abstraction dimensions. By in-
+troducing mechanisms such as active exploration           This work is partially supported by National Natu-
+and cross-trajectory abstraction, memory mecha-           ral Science Foundation of China Young Scientists
+nisms within the experience stage enable agents to        Fund (No. 62206233) and RMGS (2025 First Pro-
+transcend situational constraints and acquire trans-      cessing Cycle).
+ferable behavioral experience. We hope this survey
+assists the community in designing more advanced          References
+memory mechanisms, guiding LLM agents toward
+the realization of true general artificial intelligence.  Michael Ahn, Anthony Brohan, Noah Brown, Yevgen
+                                                             Chebotar, Omar Cortes, Byron David, Chelsea Finn,
+Limitations                                                  Keerthana Gopalakrishnan, Karol Hausman, Alexan-
+                                                             der Herzog, Daniel Ho, Jasmine Hsu, Julian Ibarz,
+This survey provides a comprehensive qualitative             Brian Ichter, Alex Irpan, Eric Jang, Rosario M Jau-
+analysis of memory mechanisms for LLM agents;                regui Ruano, Kyle Jeffrey, Sally Jesmonth, and 24
+however, we acknowledge several limitations that             others. 2022. Do as i can, not as i say: Grounding
+warrant discussion.                                          language in robotic affordances. In Conference on
+Lack of Direct Quantitative Comparison. This                 Robot Learning.
+survey adopts a qualitative analytical framework
+and lacks a comprehensive performance compari-            Qingyao Ai, Yichen Tang, Changyue Wang, Jianming
+son of memory mechanisms. This is because the                Long, Weihang Su, and Yiqun Liu. 2025. Memo-
+design objectives differ across the three stages of          rybench: A benchmark for memory and continual
+storage, reflection, and experience, and no uni-             learning in llm systems. ArXiv, abs/2510.17281.
+
+                                                          Minttu Alakuijala, Ya Gao, Georgy Ananov, Samuel
+                                                             Kaski, Pekka Marttinen, Alexander Ilin, and Harri
+   Valpola. 2025. Memento no more: Coaching ai               Yichao Cai, Yuhang Liu, Erdun Gao, Tianjiao Jiang,
+   agents to master multiple tasks via hints internal-          Zhen Zhang, Anton van den Hengel, and Javen Qin-
+   ization. ArXiv, abs/2502.01562.                              feng Shi. 2025a. On the value of cross-modal mis-
+                                                                alignment in multimodal representation learning.
+Marc-Antoine Allard, Arnaud Teinturier, Victor Xing,
+   and Gautier Viaud. 2026. Experiential reflective          Zhicheng Cai, Xinyuan Guo, Yu Pei, Jiangtao Feng,
+   learning for self-improving llm agents.                      Jiangjie Chen, Ya-Qin Zhang, Wei-Ying Ma, Mingx-
+                                                                uan Wang, and Hao Zhou. 2025b. Flex: Continuous
+Saad Alqithami. 2025. Forgetful but faithful: A cogni-          agent evolution via forward learning from experience.
+   tive memory architecture and benchmark for privacy-
+   aware generative agents. ArXiv, abs/2512.12856.           Chuxue Cao, Jinluan Yang, Haoran Li, Kunhao Pan,
+                                                                Zijian Zhao, Zhengyu Chen, Yuchen Tian, Lijun Wu,
+Petr Anokhin, Nikita Semenov, Artyom Y. Sorokin,                Conghui He, Sirui Han, and 1 others. 2026a. Push-
+   Dmitry Evseev, Mikhail Burtsev, and Evgeny Bur-              ing the boundaries of natural reasoning: Interleaved
+   naev. 2024. Arigraph: Learning knowledge graph               bonus from formal-logic verification. arXiv preprint
+   world models with episodic memory for llm agents.            arXiv:2601.22642.
+   In International Joint Conference on Artificial Intelli-
+   gence.                                                    Shidong Cao, Hongzhan Lin, Yuxuan Gu, Ziyang Luo,
+                                                                and Jing Ma. 2026b. Diffcot: Diffusion-styled
+Yushi Bai, Xin Lv, Jiajie Zhang, Hong Lyu, Jiankai              chain-of-thought reasoning in llms. arXiv preprint
+   Tang, Zhidian Huang, Zhengxiao Du, Xiao Liu, Ao-             arXiv:2601.03559.
+   han Zeng, Lei Hou, Yuxiao Dong, Jie Tang, and
+   Juanzi Li. 2023. Longbench: A bilingual, multitask        Zouying Cao, Jiaji Deng, Li Yu, Weikang Zhou,
+   benchmark for long context understanding. ArXiv,             Zhaoyang Liu, Bolin Ding, and Hai Zhao. 2025. Re-
+   abs/2308.14508.                                              member me, refine me: A dynamic procedural mem-
+                                                                ory framework for experience-driven agent evolution.
+Yushi Bai, Shangqing Tu, Jiajie Zhang, Hao Peng, Xi-
+   aozhi Wang, Xin Lv, Shulin Cao, Jiazheng Xu, Lei          Chunliang Chen, Ming Guan, Xiao Lin, Jiaxu Li, Luxi
+   Hou, Yuxiao Dong, Jie Tang, and Juanzi Li. 2024.             Lin, Qiying Wang, Xiangyu Chen, Jixiang Luo,
+   Longbench v2: Towards deeper understanding and               Changzhi Sun, Dell Zhang, and Xuelong Li. 2025a.
+   reasoning on realistic long-context multitasks. ArXiv,       Telemem: Building long-term and multimodal mem-
+   abs/2412.15204.                                              ory for agentic ai. ArXiv, abs/2601.06037.
+
+Roberto Balestri and Guglielmo Pescatore. 2025. Narra-       Ding Chen, Simin Niu, Kehang Li, Peng Liu, Xiangping
+   tive memory in machines: Multi-agent arc extraction          Zheng, Bo Tang, Xinchi Li, Feiyu Xiong, and Zhiyu
+   in serialized tv. ArXiv, abs/2508.07010.                     Li. 2025b. Halumem: Evaluating hallucinations in
+                                                                memory systems of agents. ArXiv, abs/2511.03506.
+Ali Behrouz, Peilin Zhong, and Vahab S. Mirrokni.
+   2024. Titans: Learning to memorize at test time.          Guo Chen, Lidong Lu, Yicheng Liu, Li Dong, Lidong
+   ArXiv, abs/2501.00663.                                       Zou, Jixin Lv, Zhenquan Li, Xinyi Mao, Baoqi Pei,
+                                                                Shihao Wang, Zhiqi Li, Karan Sapra, Fuxiao Liu,
+Andrii Bidochko and Yaroslav Vyklyuk. 2026. Thought             Yin-Dong Zheng, Yifei Huang, Limin Wang, Zhiding
+   management system for long-horizon, goal-driven              Yu, Andrew Tao, Guilin Liu, and Tong Lu. 2026. To-
+   llm agents. Journal of Computational Science,                wards multimodal lifelong understanding: A dataset
+   93:102740.                                                   and agentic baseline.
+
+Weihao Bo, Shan Zhang, Yanpeng Sun, Jingjing Wu,             Shiqi Chen, Tongyao Zhu, Zian Wang, Jinghan Zhang,
+   Qunyi Xie, Xiao Tan, Kunbin Chen, Wei He, Xiaofan            Kangrui Wang, Siyang Gao, Teng Xiao, Yee Whye
+   Li, Na Zhao, Jingdong Wang, and Zechao Li. 2025.             Teh, Junxian He, and Manling Li. 2025c. Internaliz-
+   Agentic learner with grow-and-refine multimodal se-          ing world models via self-play finetuning for agentic
+   mantic memory. ArXiv, abs/2511.21678.                        rl. ArXiv, abs/2510.15047.
+
+Xiaohe Bo, Zeyu Zhang, Quanyu Dai, Xueyang Feng,             Silin Chen, Shaoxin Lin, Xiaodong Gu, Yuling Shi,
+   Lei Wang, Rui Li, Xu Chen, and Ji-Rong Wen. 2024.            Heng Lian, Longfei Yun, Dong Chen, Weiguo Sun,
+   Reflective multi-agent collaboration based on large          Lin Cao, and Qianxiang Wang. 2025d. Swe-exp:
+   language models. Advances in Neural Information              Experience-driven software issue resolution. ArXiv,
+   Processing Systems 37.                                       abs/2507.23361.
+
+Bernd Bohnet, P. Kamienny, Hanie Sedghi, Dilan Gorur,        Jiali Cheng, Anjishnu Kumar, Roshan Lal, Rishi Ra-
+   Pranjal Awasthi, Aaron T Parisi, Kevin Swersky,              jasekaran, Hani Ramezani, Omar Zia Khan, Oleg
+   Rosanne Liu, Azade Nova, and Noah Fiedel. 2025.              Rokhlenko, Sunny Chiu-Webster, Gang Hua, and
+   Enhancing llm planning capabilities through intrinsic        Hadi Amiri. 2025a. Webatlas: An llm agent with
+   self-critique.                                               experience-driven memory and action simulation.
+Mingyue Cheng, Ouyang Jie, Shuo Yu, Ruiran Yan,               Ningyu Zhang. 2025a. Lightmem: Lightweight
+   Yucong Luo, Zirui Liu, Daoyu Wang, Qi Liu, and             and efficient memory-augmented generation. ArXiv,
+   Enhong Chen. 2025b. Agent-r1: Training powerful            abs/2510.18866.
+   llm agents with end-to-end reinforcement learning.
+                                                           Runnan Fang, Yuan Liang, Xiaobin Wang, Jialong Wu,
+Prateek Chhikara, Dev Khant, Saket Aryan, Taranjeet           Shuofei Qiao, Pengjun Xie, Fei Huang, Huajun Chen,
+   Singh, and Deshraj Yadav. 2025. Mem0: Building             and Ningyu Zhang. 2025b. Memp: Exploring agent
+   production-ready ai agents with scalable long-term         procedural memory. ArXiv, abs/2508.06433.
+   memory. ArXiv, abs/2504.19413.
+                                                           Junyu Feng, Binxiao Xu, Jiayi Chen, Meng Yi Dai,
+Shaobo Cui, Luca Mouchel, and Boi Faltings. 2025.             Cenyang Wu, Haodong Li, Bohan Zeng, Yu Xie,
+   Uncertainty in causality: A new frontier. In Annual        Hao Liang, Ming Lu, and Wentao Zhang. 2026.
+   Meeting of the Association for Computational Lin-          M2a: Multimodal memory agent with dual-layer hy-
+   guistics.                                                  brid memory for long-term personalized interactions.
+                                                              ArXiv, abs/2602.07624.
+Payel Das, Subhajit Chaudhury, Elliot Nelson, Igor
+   Melnyk, Sarath Swaminathan, Sihui Dai, Aurélie C.       Lang Feng, Zhenghai Xue, Tingcong Liu, and Bo An.
+   Lozano, Georgios Kollias, Vijil Chenthamarakshan,          2025a. Group-in-group policy optimization for llm
+   Jirí Navrátil, Soham Dan, and Pin-Yu Chen. 2024.           agent training. ArXiv, abs/2505.10978.
+   Larimar: Large language models with episodic mem-
+   ory control. ArXiv, abs/2403.11901.                     Tongtong Feng, Xin Wang, Yu-Gang Jiang, and Wenwu
+                                                              Zhu. 2025b. Embodied ai: From llms to world mod-
+Yang Deng, Xuan Zhang, Wenxuan Zhang, Yifei Yuan,             els. ArXiv, abs/2509.20021.
+   See-Kiong Ng, and Tat-Seng Chua. 2024. On the
+   multi-turn instruction following for conversational     Saman Forouzandeh, Wei Peng, Parham Moradi,
+   web agents. In Annual Meeting of the Association           Xinghuo Yu, and Mahdi Jalili. 2025. Learning hi-
+   for Computational Linguistics.                             erarchical procedural memory for llm agents through
+                                                              bayesian selection and contrastive refinement.
+Bowen Ding, Yuhan Chen, Jiayang Lv, Jiyao Yuan,
+   Qi Zhu, Shuangshuang Tian, Dantong Zhu, Futing          Dayuan Fu, Keqing He, Yejie Wang, Wentao Hong,
+   Wang, Heyuan Deng, Fei Mi, Lifeng Shang, and Tao           Zhuoma Gongque, Weihao Zeng, Wei Wang, Jin-
+   Lin. 2025. Rethinking expert trajectory utilization in     gang Wang, Xunliang Cai, and Weiran Xu. 2025.
+   llm post-training.                                         Agentrefine: Enhancing agent generalization through
+                                                              refinement tuning. ArXiv, abs/2501.01702.
+Xingbo Du, Loka Li, Duzhen Zhang, and Le Song.
+   2025a. Memr3: Memory retrieval via reflective rea-      Dawei Gao, Zitao Li, Weirui Kuang, Xuchen Pan,
+   soning for llm agents. ArXiv, abs/2512.20237.              Daoyuan Chen, Zhijian Ma, Bingchen Qian, Liuyi
+                                                              Yao, Lin Zhu, Chen Cheng, Hongzhu Shi, Yaliang Li,
+Yiming Du, Wenyu Huang, Danna Zheng, Zhaowei                  Bolin Ding, and Jingren Zhou. 2024. Agentscope:
+   Wang, Sébastien Montella, Mirella Lapata, Kam-Fai          A flexible yet robust multi-agent platform. ArXiv,
+   Wong, and Jeff Z. Pan. 2025b. Rethinking mem-              abs/2402.14034.
+   ory in ai: Taxonomy, operations, topics, and future
+   directions. ArXiv, abs/2505.00675.                      Himanshu Gharat, Himanshi Agrawal, and Gourab K.
+                                                              Patro. 2025. From personalization to prejudice: Bias
+Yiming Du, Baojun Wang, Yifan Xiang, Zhaowei Wang,            and discrimination in memory-enhanced ai agents for
+   Wenyu Huang, Boyang Xue, Bin Liang, Xingshan               recruitment.
+   Zeng, Fei Mi, Haoli Bai, Lifeng Shang, Jeff Z. Pan,
+   Yuxin Jiang, and Kam-Fai Wong. 2025c. Memory-           Amirhosein Ghasemabadi and Di Niu. 2025. Can llms
+   t1: Reinforcement learning for temporal reasoning in       predict their own failures? self-awareness via internal
+   multi-session agents.                                      circuits.
+
+Yiming Du, Hongru Wang, Zhengyi Zhao, Bin Liang,           Jiacheng Guo, Ling Yang, Peter Chen, Qixin Xiao, Yin-
+   Baojun Wang, Wanjun Zhong, Zezhong Wang, and               jie Wang, Xinzhe Juan, Jiahao Qiu, Ke Shen, and
+   Kam-Fai Wong. 2024. Perltqa: A personal long-              Mengdi Wang. 2025. Genenv: Difficulty-aligned
+   term memory dataset for memory classification, re-         co-evolution between llm agents and environment
+   trieval, and synthesis in question answering. ArXiv,       simulators.
+   abs/2402.16288.
+                                                           Dongge Han, Camille Couturier, Daniel Madrigal Diaz,
+Tom Everitt, Cristina Garbacea, Alexis Bellot, Jonathan       Xuchao Zhang, Victor Rühle, and Saravan Rajmohan.
+   Richens, Henry Papadatos, Siméon Campos, and Ro-           2025. Legomem: Modular procedural memory for
+   hin Shah. 2025. Evaluating the goal-directedness of        multi-agent llm systems for workflow automation.
+   large language models. ArXiv, abs/2504.11844.              ArXiv, abs/2510.04851.
+
+Jizhan Fang, Xinle Deng, Haoming Xu, Ziyan Jiang,          Jackson Hassell, Dan Zhang, Han Jun Kim, Tom
+   Yuqi Tang, Ziwen Xu, Shumin Deng, Yunzhi Yao,              Mitchell, and Estevam Hruschka. 2025. Learning
+   Mengru Wang, Shuofei Qiao, Huajun Chen, and                from supervision with semantic and episodic mem-
+                                                              ory: A reflective approach to agent adaptation. ArXiv,
+                                                              abs/2510.19897.
+Hiroaki Hayashi, Bo Pang, Wenting Zhao, Ye Liu,           Mengkang Hu, Tianxing Chen, Qiguang Chen, Yao Mu,
+   Akash Gokul, Srijan Bansal, Caiming Xiong, Semih          Wenqi Shao, and Ping Luo. 2024. Hiagent: Hier-
+   Yavuz, and Yingbo Zhou. 2025. Self-abstraction            archical working memory management for solving
+   from grounded experience for plan-guided policy re-       long-horizon agent tasks with large language model.
+   finement.                                                 ArXiv, abs/2408.09559.
+
+Bo He, Hengduo Li, Young Kyun Jang, Menglin Jia,          Yuanzhe Hu, Yu Wang, and Julian McAuley. 2025a.
+   Xuefei Cao, Ashish Shah, Abhinav Shrivastava, and         Evaluating memory in llm agents via incremental
+   Ser-Nam Lim. 2024a. Ma-lmm: Memory-augmented              multi-turn interactions. ArXiv, abs/2507.05257.
+   large multimodal model for long-term video under-
+   standing. 2024 IEEE/CVF Conference on Computer         Yuyang Hu, Shichun Liu, Yanwei Yue, Guibin Zhang,
+   Vision and Pattern Recognition (CVPR), pages 13504-       Boyang Liu, Fangyi Zhu, Jiahang Lin, Honglin Guo,
+   13514.                                                    Shihan Dou, Zhiheng Xi, Senjie Jin, Jiejun Tan, Yan-
+                                                             bin Yin, Jiongnan Liu, Zeyu Zhang, Zhongxiang Sun,
+Junqing He, Liang Zhu, Rui Wang, Xi Wang, Gholam-            Yutao Zhu, Hao Sun, Boci Peng, and 28 others. 2025b.
+   reza Haffari, and Jiaxing Zhang. 2024b. Madial-           Memory in the age of ai agents.
+   bench: Towards real-world evaluation of memory-
+   augmented dialogue generation. In North American       Jie Huang, Xinyun Chen, Swaroop Mishra,
+   Chapter of the Association for Computational Lin-         Huaixiu Steven Zheng, Adams Wei Yu, Xiny-
+   guistics.                                                 ing Song, and Denny Zhou. 2023a. Large language
+                                                             models cannot self-correct reasoning yet. ArXiv,
+Kaiyu He, Mian Zhang, Shuo Yan, Peilin Wu, and Zhiyu         abs/2310.01798.
+   Chen. 2024c. Idea: Enhancing the rule learning abil-
+   ity of large language model agent through induction,   Xu Huang, Junwu Chen, Yuxing Fei, Zhuohan Li,
+   deduction, and abduction. In Annual Meeting of the        Philippe Schwaller, and Gerbrand Ceder. 2025a. Cas-
+   Association for Computational Linguistics.                cade: Cumulative agentic skill creation through au-
+                                                             tonomous development and evolution.
+Xingqi He, Yujie Zhang, Shuyong Gao, Wenjie Li,
+   Lingyi Hong, Mingxi Chen, Kaixun Jiang, Jiyuan         Xu Huang, Weiwen Liu, Xiaolong Chen, Xingmei
+   Fu, and Wenqiang Zhang. 2025. Rsagent: Learning           Wang, Hao Wang, Defu Lian, Yasheng Wang, Ruim-
+   to reason and act for text-guided segmentation via        ing Tang, and Enhong Chen. 2024. Understand-
+   multi-turn tool invocations.                              ing the planning of llm agents: A survey. ArXiv,
+                                                             abs/2402.02716.
+Matthew Ho, Chen Si, Zhaoxiang Feng, Fangxu Yu,
+   Yichi Yang, Zhijian Liu, Zhiting Hu, and Lianhui Qin.  Yizhe Huang, Yang Liu, Ruiyu Zhao, Xiaolong Zhong,
+   2025. Arcmemo: Abstract reasoning composition             Xingming Yue, and Ling Jiang. 2025b. Mem-
+   with lifelong llm memory. ArXiv, abs/2509.04439.          orb: A plug-and-play verbal-reinforcement mem-
+                                                             ory layer for e-commerce customer service. ArXiv,
+Chuanyang Hong and Qingyun He. 2025. Enhancing               abs/2509.18713.
+   memory retrieval in generative agents through llm-
+   trained cross attention networks. Frontiers in Psy-    Yunpeng Huang, Jingwei Xu, Zixu Jiang, Junyu Lai,
+   chology, 16.                                              Zenan Li, Yuan Yao, Taolue Chen, Lijuan Yang,
+                                                             Zhou Xin, and Xiaoxing Ma. 2023b. Advancing
+Yuki Hou, Haruki Tamoto, and Homei Miyashita. 2024.          transformer architecture in long-context large lan-
+   "my agent understands me better": Integrating dy-         guage models: A comprehensive survey. ArXiv,
+   namic human-like memory recall and consolidation          abs/2311.12351.
+   in llm-based agents. Extended Abstracts of the CHI
+   Conference on Human Factors in Computing Sys-          Zhaopei Huang, Qifeng Dai, Guozheng Wu, Xiaopeng
+   tems.                                                     Wu, Kehan Chen, Chuan Yu, Xubin Li, Tiezheng
+                                                             Ge, Wenxuan Wang, and Qin Jin. 2025c. Mem-pal:
+Tarik Houichime, Abdelghani Souhar, and Younès El            Towards memory-based personalized dialogue assis-
+   Amrani. 2025. Memory as resonance: A biomimetic           tants for long-term user-agent interaction.
+   architecture for infinite context memory on ergodic
+   phonetic manifolds.                                    Aaron Hurst, Adam Lerer, Adam P. Goucher, Adam
+                                                             Perelman, Aditya Ramesh, Aidan Clark, AJ Ostrow,
+Cheng-Ping Hsieh, Simeng Sun, Samuel Kriman, Shan-           Akila Welihinda, Alan Hayes, Alec Radford, Alek-
+   tanu Acharya, Dima Rekesh, Fei Jia, and Boris Gins-       sander Madry, Alex Baker-Whitcomb, Alex Beutel,
+   burg. 2024. Ruler: What's the real context size           Alex Borzunov, Alex Carney, Alex Chow, Alex Kir-
+   of your long-context language models? ArXiv,              illov, Alex Nichol, Alex Paino, and 79 others. 2024.
+   abs/2404.06654.                                           Gpt-4o system card. CoRR, abs/2410.21276.
+
+Chenxu Hu, Jie Fu, Chenzhuang Du, Simian Luo,             Joel Jang, Seonghyeon Ye, Changho Lee, Sohee Yang,
+   Junbo Jake Zhao, and Hang Zhao. 2023. Chatdb:             Joongbo Shin, Janghoon Han, Gyeonghun Kim, and
+   Augmenting llms with databases as their symbolic          Minjoon Seo. 2022. Temporalwiki: A lifelong bench-
+   memory. ArXiv, abs/2306.03901.                            mark for training and evaluating ever-evolving lan-
+                                                             guage models. In Conference on Empirical Methods
+                                                             in Natural Language Processing.
+Zixi Jia, Qinghua Liu, Hexiao Li, Yuyan Chen, and         Dayoon Ko, Jinyoung Kim, Hahyeon Choi, and Gunhee
+   Jiqiang Liu. 2025. Evaluating the long-term memory        Kim. 2024. Growover: How can llms adapt to grow-
+   of large language models. In Findings of the Asso-        ing real-world knowledge? In Annual Meeting of the
+   ciation for Computational Linguistics: ACL 2025,          Association for Computational Linguistics.
+   pages 19759-19777, Vienna, Austria. Association
+   for Computational Linguistics.                         Yuri Kuratov, Aydar Bulatov, Petr Anokhin, Ivan Rod-
+                                                             kin, Dmitry Sorokin, Artyom Y. Sorokin, and Mikhail
+Bowen Jiang, Yuan Yuan, Maohao Shen, Zhuoqun Hao,            Burtsev. 2024. Babilong: Testing the limits of llms
+   Zhangchen Xu, Zichen Chen, Ziyi Liu, Anvesh Rao           with long context reasoning-in-a-haystack. ArXiv,
+   Vijjini, Jiashu He, Hanchao Yu, Radha Poovendran,         abs/2406.10149.
+   Greg Wornell, Lyle Ungar, Dan Roth, Sihao Chen,
+   and Camillo Jose Taylor. 2025a. Personamem-v2:         Chris Latimer, Nicol'o Boschi, Andrew Neeser, Chris
+   Towards personalized intelligence via learning im-        Bartholomew, Gaurav Srivastava, Xuan Wang, and
+   plicit user personas and agentic memory.                  Naren Ramakrishnan. 2025. Hindsight is 20/20:
+                                                             Building agent memory that retains, recalls, and re-
+Dongfu Jiang, Yi Lu, Zhuofeng Li, Zhiheng Lyu, Ping          flects.
+   Nie, Haozhe Wang, Alex Su, Hui Chen, Kai Zou,
+   Chao Du, Tianyu Pang, and Wenhu Chen. 2025b.           Angeliki Lazaridou, Adhiguna Kuncoro, Elena Gri-
+   Verltool: Towards holistic agentic reinforcement          bovskaya, Devang Agrawal, Adam Liska, Tayfun
+   learning with tool use. ArXiv, abs/2509.01055.            Terzi, Mai Giménez, Cyprien de Masson d'Autume,
+                                                             Tomás Kociský, Sebastian Ruder, Dani Yogatama,
+Huiqiang Jiang, Qianhui Wu, Chin-Yew Lin, Yuqing             Kris Cao, Susannah Young, and Phil Blunsom. 2021.
+   Yang, and Lili Qiu. 2023. Llmlingua: Compressing          Mind the gap: Assessing temporal generalization
+   prompts for accelerated inference of large language       in neural language models. In Neural Information
+   models. In Conference on Empirical Methods in             Processing Systems.
+   Natural Language Processing.
+                                                          Seokhan Lee and Hanseok Ko. 2025. Training a team
+Hongye Jin, Xiaotian Han, Jingfeng Yang, Zhimeng             of language models as options to build an sql-based
+   Jiang, Zirui Liu, Chia yuan Chang, Huiyuan Chen,          memory. Applied Sciences.
+   and Xia Hu. 2024. Llm maybe longlm: Self-
+   extend llm context window without tuning. ArXiv,       Mingcong Lei, Honghao Cai, Binbin Que, Zezhou Cui,
+   abs/2401.01325.                                           Liangchen Tan, Junkun Hong, Gehan Hu, Shuangyu
+                                                             Zhu, Yimou Wu, Shaohan Jiang, Ge Wang, Zhen
+Abhinav Joshi, Areeb Ahmad, and Ashutosh Modi.               Li, Shuguang Cui, Yiming Zhao, and Yatong Han.
+   2024. Cold: Causal reasoning in closed daily ac-          2025. Robomemory: A brain-inspired multi-memory
+   tivities. ArXiv, abs/2411.19500.                          agentic framework for lifelong learning in physical
+                                                             embodied systems. ArXiv, abs/2508.01415.
+Adam Tauman Kalai and Santosh S. Vempala. 2023.
+   Calibrated language models must hallucinate. Pro-      Rui Li, Zeyu Zhang, Xiaohe Bo, Zihang Tian, Xu Chen,
+   ceedings of the 56th Annual ACM Symposium on              Quanyu Dai, Zhenhua Dong, and Ruiming Tang.
+   Theory of Computing.                                      2025a. Cam: A constructivist view of agentic mem-
+                                                             ory for llm-based reading comprehension. ArXiv,
+Jiazheng Kang, Mingming Ji, Zhe Zhao, and Ting               abs/2510.05520.
+   Bai. 2025. Memory os of ai agent. ArXiv,
+   abs/2506.06326.                                        Shilong Li, Yancheng He, Hangyu Guo, Xingyuan Bu,
+                                                             Ge Bai, Jie Liu, Jiaheng Liu, Xingwei Qu, Yang-
+Jungo Kasai, Keisuke Sakaguchi, Yoichi Takahashi,            guang Li, Wanli Ouyang, Wenbo Su, and Bo Zheng.
+   Ronan Le Bras, Akari Asai, Xinyan Yu, Dragomir            2024. Graphreader: Building graph-based agent to
+   Radev, Noah A. Smith, Yejin Choi, and Kentaro Inui.       enhance long-context abilities of large language mod-
+   2024. Realtime qa: What's the answer right now?           els. In Conference on Empirical Methods in Natural
+   Preprint, arXiv:2207.13332.                               Language Processing.
+
+Eunwon Kim, Chanho Park, and Buru Chang. 2024a.           Xiaoxi Li, Wenxiang Jiao, Jiarui Jin, Guanting Dong,
+   Share: Shared memory-aware open-domain long-              Jiajie Jin, Yinuo Wang, Hao Wang, Yutao Zhu, Ji-
+   term dialogue dataset constructed from movie script.      Rong Wen, Yuan Lu, and Zhicheng Dou. 2025b.
+   ArXiv, abs/2410.20682.                                    Deepagent: A general reasoning agent with scalable
+                                                             toolsets. ArXiv, abs/2510.21618.
+Jiho Kim, Woosog Chay, Hyeonji Hwang, Daeun
+   Kyung, Hyunseung Chung, Eunbyeol Cho, Yohan Jo,        Xintong Li, Jalend Bantupalli, Ria Dharmani, Yuwei
+   and Edward Choi. 2024b. Dialsim: A real-time simu-        Zhang, and Jingbo Shang. 2025c. Toward multi-
+   lator for evaluating long-term dialogue understanding     session personalized conversation: A large-scale
+   of conversational agents. ArXiv, abs/2406.13144.          dataset and hierarchical tree framework for implicit
+                                                             reasoning. ArXiv, abs/2503.07018.
+Minsoo Kim and Seung won Hwang. 2025. Coex -
+   co-evolving world-model and exploration. ArXiv,        Zhiyu Li, Shichao Song, Chenyang Xi, Hanyu Wang,
+   abs/2507.22281.                                           Chen Tang, Simin Niu, Ding Chen, Jiawei Yang,
+   Chunyu Li, Qingchen Yu, Jihao Zhao, Yezhaohui            Huaxiu Yao. 2025a. Agent0-vl: Exploring self-
+   Wang, Peng Liu, Zehao Lin, Pengyuan Wang, Jiahao         evolving agent for tool-integrated vision-language
+   Huo, Tianyi Chen, Kai Chen, Ke-Rong Li, and 20           reasoning.
+   others. 2025d. Memos: A memory os for ai system.
+   ArXiv, abs/2507.03724.                                Jiateng Liu, Zhenhailong Wang, Xiaojiang Huang,
+                                                            Yingjie Li, Xing Fan, Xiang Li, Chenlei Guo, Ruhi
+Ziyue Li, Yuan Chang, Gaihong Yu, and Xiaoqiu Le.           Sarikaya, and Heng Ji. 2025b. Analyzing and inter-
+   2025e. Hiplan: Hierarchical planning for llm-based       nalizing complex policy documents for llm agents.
+   agents with adaptive global-local guidance. ArXiv,       ArXiv, abs/2510.11588.
+   abs/2508.19076.
+                                                         Jun Liu, Zhenglun Kong, Changdi Yang, Fan Yang,
+Niu Lian, Yuting Wang, Hanshu Yao, Jinpeng Wang,            Tianqi Li, Peiyan Dong, Joannah Nanjekye, Hao
+   Bin Chen, Yaowei Wang, Min Zhang, and Shu-Tao            Tang, Geng Yuan, Wei Niu, Wenbin Zhang, Pu Zhao,
+   Xia. 2026. From verbatim to gist: Distilling pyrami-     Xue Lin, Dong-Xu Huang, and Yanzhi Wang. 2025c.
+   dal multimodal memory via semantic information           Rcr-router: Efficient role-aware context routing for
+   bottleneck for long-horizon video agents. ArXiv,         multi-agent llm systems with structured memory.
+   abs/2603.01455.                                          ArXiv, abs/2508.04903.
+
+Jiafeng Liang, Hao Li, Chang Li, Jiaqi Zhou, Shixin      Junming Liu, Yifei Sun, Weihua Cheng, Haodong
+   Jiang, Zekun Wang, Changkai Ji, Zhihao Zhu, Runx-        Lei, Yirong Chen, Licheng Wen, Xuemeng Yang,
+   uan Liu, Taolin Ren, Jinlan Fu, See-Kiong Ng, Xia        Daocheng Fu, Pinlong Cai, Nianchen Deng, Yi Yu,
+   Liang, Ming Liu, and Bing Qin. 2025. Ai meets            Shuyue Hu, Botian Shi, and Ding Wang. 2025d.
+   brain: Memory systems from cognitive neuroscience        Memverse: Multimodal memory for lifelong learning
+   to autonomous agents.                                    agents.
+
+Callie C. Liao, Duoduo Liao, and Sai Surya Gadiraju.     Lei Liu, Xiaoyan Yang, Yue Shen, Binbin Hu, Zhiqiang
+   2025. Agentmaster: A multi-agent conversational          Zhang, Jinjie Gu, and Guannan Zhang. 2023. Think-
+   framework using a2a and mcp protocols for mul-           in-memory: Recalling and post-thinking enable llms
+   timodal information retrieval and analysis. ArXiv,       with long-term memory. ArXiv, abs/2311.08719.
+   abs/2507.21105.
+                                                         Shukai Liu, Jian Yang, Bo Jiang, Yizhi Li, Jinyang Guo,
+Bill Yuchen Lin, Yicheng Fu, Karina Yang, Prithvi-          Xianglong Liu, and Bryan Dai. 2025e. Context as
+   raj Ammanabrolu, Faeze Brahman, Shiyu Huang,             a tool: Context management for long-horizon swe-
+   Chandra Bhagavatula, Yejin Choi, and Xiang Ren.          agents.
+   2023. Swiftsage: A generative agent with fast and
+   slow thinking for complex interactive tasks. ArXiv,   Weijie Liu, Zecheng Tang, Juntao Li, Kehai Chen,
+   abs/2305.17390.                                          and Min Zhang. 2024. Memlong: Memory-
+                                                            augmented retrieval for long text modeling. ArXiv,
+Hongzhan Lin, Zixin Chen, Zhiqi Shen, Ziyang Luo,           abs/2408.16967.
+   Zhen Ye, Jing Ma, Tat-Seng Chua, and Guandong
+   Xu. 2026. Towards comprehensive stage-wise bench-     Xiaoyu Liu, Paiheng Xu, Junda Wu, Jiaxin Yuan, Yifan
+   marking of large language models in fact-checking.       Yang, Yuhang Zhou, Fuxiao Liu, Tianrui Guan, Hao-
+   arXiv preprint arXiv:2601.02669.                         liang Wang, Tong Yu, Julian J. McAuley, Wei Ai, and
+                                                            Furong Huang. 2025f. Large language models and
+Hongzhan Lin, Yang Deng, Yuxuan Gu, Wenxuan                 causal inference in collaboration: A comprehensive
+   Zhang, Jing Ma, See Kiong Ng, and Tat-Seng Chua.         survey. ArXiv, abs/2403.09606.
+   2025a. Fact-audit: An adaptive multi-agent frame-
+   work for dynamic fact-checking evaluation of large    Yitao Liu, Chenglei Si, Karthik R. Narasimhan, and
+   language models. In Proceedings of the 63rd An-          Shunyu Yao. 2025g. Contextual experience replay
+   nual Meeting of the Association for Computational        for self-improvement of language agents. In Annual
+   Linguistics (Volume 1: Long Papers), pages 360-381.      Meeting of the Association for Computational Lin-
+                                                            guistics.
+Yueqian Lin, Qinsi Wang, Hancheng Ye, Yuzhe
+   Fu, Hai Li, and Yiran Chen. 2025b. Hip-               Zeyuan Liu, Jeonghye Kim, Xufang Luo, Dongsheng
+   pomm: Hippocampal-inspired multimodal memory             Li, and Yuqing Yang. 2026b. Exploratory memory-
+   for long audiovisual event understanding. ArXiv,         augmented llm agent via hybrid on- and off-policy
+   abs/2504.10739.                                          optimization. Preprint, arXiv:2602.23008.
+
+Jiaqi Liu, Zipeng Ling, Shi Qiu, Yanqing Liu, Siwei      Lin Long, Yichen He, Wen song Ye, Yiyuan Pan,
+   Han, Peng Xia, Haoqin Tu, Zeyu Zheng, Cihang Xie,        Yuan Lin, Hang Li, Junbo Zhao, and Wei Li. 2025a.
+   Charles Fleming, Mingyu Ding, and Huaxiu Yao.            Seeing, listening, remembering, and reasoning: A
+   2026a. Omni-simplemem: Autoresearch-guided dis-          multimodal agent with long-term memory. ArXiv,
+   covery of lifelong multimodal agent memory.              abs/2508.09736.
+
+Jiaqi Liu, Kaiwen Xiong, Peng Xia, Yiyang Zhou, Hao-
+   nian Ji, Lu Feng, Siwei Han, Mingyu Ding, and
+Xiaoxiao Long, Qingrui Zhao, Kaiwen Zhang, Zihao          Atsuyuki Miyai, Zaiying Zhao, Kazuki Egashira, Atsuki
+   Zhang, Dingrui Wang, Yumeng Liu, Zhengjie Shu,            Sato, Tatsumi Sunada, Shota Onohara, Hiromasa Ya-
+   Yi Lu, Shouzheng Wang, Xinzhe Wei, Wei Li, Wei            manishi, Mashiro Toyooka, Kunato Nishina, Ryoma
+   Yin, Yao Yao, Jiangtian Pan, Qiu Shen, Ruigang            Maeda, Kiyoharu Aizawa, and T. Yamasaki. 2025.
+   Yang, Xun Cao, and Qionghai Dai. 2025b. A survey:         Webchorearena: Evaluating web browsing agents on
+   Learning embodied intelligence from physical simu-        realistic tedious web tasks. ArXiv, abs/2506.01952.
+   lators and world models. ArXiv, abs/2507.00917.
+                                                          Ali Modarressi, Abdullatif Köksal, Ayyoob Imani,
+Junru Lu, Siyu An, Mingbao Lin, Gabriele Pergola, Yu-        Mohsen Fayyaz, and Hinrich Schutze. 2024. Mem-
+   lan He, Di Yin, Xing Sun, and Yunsheng Wu. 2023.          llm: Finetuning llms to use an explicit read-write
+   Memochat: Tuning llms to use memos for consis-            memory. ArXiv, abs/2404.11672.
+   tent long-range open-domain conversation. ArXiv,
+   abs/2308.08239.                                        Jiayan Nan, Wenquan Ma, Wenlong Wu, and Yize Chen.
+                                                             2025. Nemori: Self-organizing agent memory in-
+Yihao Lu, W. Cheng, Zeyu Zhang, and Hao Tang.                spired by cognitive science. ArXiv, abs/2508.03341.
+   2026. Mma: Multimodal memory agent. ArXiv,
+   abs/2602.16493.                                        Jingwei Ni, Yihao Liu, Xinpeng Liu, Yutao Sun,
+                                                             Mengyu Zhou, Pengyu Cheng, Dexin Wang, Xiaoxi
+Haipeng Luo, Huawen Feng, Qingfeng Sun, Can Xu,              Jiang, and Guanjun Jiang. 2026. Trace2skill: Distill
+   Kai Zheng, Yufei Wang, Tao Yang, Han Hu, and Yan-         trajectory-local lessons into transferable agent skills.
+   song Tang. 2026. Agentmath: Empowering math-
+   ematical reasoning for large language models via       Siru Ouyang, Jun Yan, I-Hung Hsu, Yanfei Chen,
+   tool-augmented agent. Preprint, arXiv:2512.20745.         Ke Jiang, Zifeng Wang, Rujun Han, Long T. Le,
+                                                             Samira Daruki, Xiangru Tang, Vishy Tirumalashetty,
+Hongyin Luo, Nathaniel Morgan, Tina Li, Derek Zhao,          George Lee, Mahsan Rofouei, Hangfei Lin, Jiawei
+   Ai Vy Ngo, Philip Schroeder, Lijie Yang, Assaf Ben-       Han, Chen-Yu Lee, and Tomas Pfister. 2025. Reason-
+   Kish, Jack O'Brien, and James R. Glass. 2025a. Be-        ingbank: Scaling agent self-evolving with reasoning
+   yond context limits: Subconscious threads for long-       memory. ArXiv, abs/2509.25140.
+   horizon reasoning. ArXiv, abs/2507.16784.
+                                                          Onat Ozer, Grace Wu, Yuchen Wang, Daniel Dosti,
+Xufang Luo, Yuge Zhang, Zhiyuan He, Zilong Wang,             Honghao Zhang, and Vivi De La Rue. 2025.
+   Siyun Zhao, Dongsheng Li, Luna K. Qiu, and Yuqing         Mar:multi-agent reflexion improves reasoning abili-
+   Yang. 2025b. Agent lightning: Train any ai agents         ties in llms.
+   with reinforcement learning. ArXiv, abs/2508.03680.
+                                                          Charles Packer, Vivian Fang, Shishir G. Patil, Kevin
+Ziyang Luo, Zhiqi Shen, Wenzhuo Yang, Zirui Zhao,            Lin, Sarah Wooders, and Joseph Gonzalez. 2023.
+   Prathyusha Jwalapuram, Amrita Saha, Doyen Sa-             Memgpt: Towards llms as operating systems. ArXiv,
+   hoo, Silvio Savarese, Caiming Xiong, and Junnan           abs/2310.08560.
+   Li. 2025c. Mcp-universe: Benchmarking large lan-
+   guage models with real-world model context protocol    Yiyuan Pan, Zhe Liu, and Hesheng Wang. 2025.
+   servers. CoRR, abs/2508.14704.                            Wonder wins ways: Curiosity-driven exploration
+                                                             through multi-agent contextual calibration. ArXiv,
+Kelvin Luu, Daniel Khashabi, Suchin Gururangan, Kar-         abs/2509.20648.
+   ishma Mandyam, and Noah A. Smith. 2022. Time
+   waits for no one! analysis and challenges of temporal  Joon Sung Park, Joseph C. O'Brien, Carrie J. Cai,
+   misalignment. Preprint, arXiv:2111.07408.                 Meredith Ringel Morris, Percy Liang, and Michael S.
+                                                             Bernstein. 2023. Generative agents: Interactive sim-
+Yuanjie Lyu, Chengyu Wang, Jun Huang, and Tong               ulacra of human behavior. Proceedings of the 36th
+   Xu. 2025. From correction to mastery: Reinforced          Annual ACM Symposium on User Interface Software
+   distillation of large language model agents. ArXiv,       and Technology.
+   abs/2509.14257.
+                                                          Zehan Qi, Xiao Liu, Iat Long Iong, Hanyu Lai, Xueqiao
+Adyasha Maharana, Dong-Ho Lee, S. Tulyakov, Mohit            Sun, Wenyi Zhao, Yu Yang, Xinyue Yang, Jiadai Sun,
+   Bansal, Francesco Barbieri, and Yuwei Fang. 2024.         Shuntian Yao, Tianjie Zhang, Wei Xu, Jie Tang, and
+   Evaluating very long-term conversational memory of        Yuxiao Dong. 2025. Webrl: Training llm web agents
+   llm agents. ArXiv, abs/2402.17753.                        via self-evolving online curriculum reinforcement
+                                                             learning. Preprint, arXiv:2411.02337.
+Bodhisattwa Prasad Majumder, Bhavana Dalvi, Pe-
+   ter Alexander Jansen, Oyvind Tafjord, Niket Tandon,    Yujia Qin, Shihao Liang, Yining Ye, Kunlun Zhu, Lan
+   Li Zhang, Chris Callison-Burch, and Peter Clark.          Yan, Yaxi Lu, Yankai Lin, Xin Cong, Xiangru Tang,
+   2023. Clin: A continually learning language agent         Bill Qian, Sihan Zhao, Lauren Hong, Runchu Tian,
+   for rapid task adaptation and generalization. ArXiv,      Ruobing Xie, Jie Zhou, Mark Gerstein, Dahai Li,
+   abs/2310.10134.                                           Zhiyuan Liu, and Maosong Sun. 2024. Toolllm: Fa-
+                                                             cilitating large language models to master 16000+
+Eric Melz. 2023. Enhancing llm intelligence with arm-        real-world apis. In The Twelfth International Con-
+   rag: Auxiliary rationale memory for retrieval aug-        ference on Learning Representations, ICLR 2024,
+   mented generation. ArXiv, abs/2311.04177.                 Vienna, Austria, May 7-11, 2024. OpenReview.net.
+Vishal Raman, R VijaiAravindh, and Abhijith Ragav.       Haoran Sun, Yekun Chai, Shuohuan Wang, Yu Sun, Hua
+   2025. Remi: A novel causal schema memory ar-             Wu, and Haifeng Wang. 2025a. Curiosity-driven
+   chitecture for personalized lifestyle recommendation     reinforcement learning from human feedback. In
+   agents. ArXiv, abs/2509.06269.                           Annual Meeting of the Association for Computational
+                                                            Linguistics.
+Preston Rasmussen, Pavlo Paliychuk, Travis Beauvais,
+   Jack Ryan, and Daniel Chalef. 2025. Zep: A tempo-     Haoran Sun, Zekun Zhang, and Shaoning Zeng. 2025b.
+   ral knowledge graph architecture for agent memory.       Preference-aware memory update for long-term llm
+   ArXiv, abs/2501.13956.                                   agents. ArXiv, abs/2510.09720.
+
+Nir Ratner, Yoav Levine, Yonatan Belinkov, Ori Ram,      Weiwei Sun, Miao Lu, Zhan Ling, Kang Liu, Xuesong
+   Inbal Magar, Omri Abend, Ehud Karpas, Amnon              Yao, Yiming Yang, and Jiecao Chen. 2025c. Scaling
+   Shashua, Kevin Leyton-Brown, and Yoav Shoham.            long-horizon llm agent via context-folding. ArXiv,
+   2022. Parallel context windows for large language        abs/2510.11967.
+   models. In Annual Meeting of the Association for
+   Computational Linguistics.                            Zhiyuan Sun, Haochen Shi, Marc-Alexandre Côté, Glen
+                                                            Berseth, Xingdi Yuan, and Bang Liu. 2024. Enhanc-
+Matthew Renze and Erhan Guven. 2024. Self-reflection        ing agent learning through world dynamics modeling.
+   in large language model agents: Effects on problem-      ArXiv, abs/2407.17695.
+   solving performance. 2024 2nd International Con-
+   ference on Foundation and Large Language Models       Mirac Suzgun, Mert Yüksekgönül, Federico Bianchi,
+   (FLLM), pages 516-525.                                   Daniel Jurafsky, and James Zou. 2025. Dynamic
+                                                            cheatsheet: Test-time learning with adaptive memory.
+Alireza Rezazadeh, Zichao Li, Ange Lou, Yuying Zhao,        ArXiv, abs/2504.07952.
+   Wei Wei, and Yujia Bao. 2025. Collaborative mem-
+   ory: Multi-user memory sharing in llm agents with     Zhen Tan, Jun Yan, I-Hung Hsu, Rujun Han, Zifeng
+   dynamic access control. ArXiv, abs/2505.18279.           Wang, Long T. Le, Yiwen Song, Yanfei Chen, Hamid
+                                                            Palangi, George Lee, Anand Iyer, Tianlong Chen,
+Rana Salama, Jason Cai, Michelle Yuan, Anna Currey,         Huan Liu, Chen-Yu Lee, and Tomas Pfister. 2025.
+   Monica Sunkara, Yi Zhang, and Yassine Benajiba.          In prospect and retrospect: Reflective memory man-
+   2025. Meminsight: Autonomous memory augmenta-            agement for long-term personalized dialogue agents.
+   tion for llm agents. ArXiv, abs/2503.21760.              ArXiv, abs/2503.08026.
+
+Yuchen Shi, Yuzheng Cai, Siqi Cai, Zihan Xu, Lichao      Arnuv Tandon, Karan Dalal, Xinhao Li, Daniel Koceja,
+   Chen, Yulei Qin, Zhijian Zhou, Xiang Fei, Chaofan        Marcel Rod, Sam Buchanan, Xiaolong Wang, Jure
+   Qiu, Xiaoyu Tan, Gang Li, Zongyi Li, Haojia Lin,         Leskovec, Sanmi Koyejo, Tatsunori Hashimoto, Car-
+   Guocan Cai, Yong Mao, Yunsheng Wu, Ke Li, and            los Guestrin, Jed McCaleb, Yejin Choi, and Yu Sun.
+   Xing Sun. 2025a. Youtu-agent: Scaling agent produc-      2025. End-to-end test-time training for long context.
+   tivity with automated generation and hybrid policy
+   optimization.                                         Hao Tang, Darren Key, and Kevin Ellis. 2024a. World-
+                                                            coder, a model-based llm agent: Building world mod-
+Zijing Shi, Meng Fang, and Ling Chen. 2025b. Monte          els by writing code and interacting with the environ-
+   carlo planning with large language model for text-       ment. ArXiv, abs/2402.12275.
+   based game agents. ArXiv, abs/2504.16855.
+                                                         Jiaming Tang, Yilong Zhao, Kan Zhu, Guangxuan Xiao,
+Noah Shinn, Federico Cassano, Beck Labash, Ashwin           Baris Kasikci, and Song Han. 2024b. Quest: Query-
+   Gopinath, Karthik Narasimhan, and Shunyu Yao.            aware sparsity for efficient long-context llm inference.
+   2023. Reflexion: language agents with verbal re-         ArXiv, abs/2406.10774.
+   inforcement learning. In Neural Information Pro-
+   cessing Systems.                                      Xiangru Tang, Tianrui Qin, Tianhao Peng, Ziyang Zhou,
+                                                            Yanjun Shao, Tingting Du, Xinming Wei, Peng Xia,
+Zhang Siyue, Yuxiang Xue, Yiming Zhang, Xiaobao             Fang Wu, He Zhu, Ge Zhang, Jiaheng Liu, Xingyao
+   Wu, Anh Tuan Luu, and Zhao Chen. 2024. Mrag: A           Wang, Sirui Hong, Chenglin Wu, Hao Cheng, Chi
+   modular retrieval framework for time-sensitive ques-     Wang, and Wangchunshu Zhou. 2025. Agent kb:
+   tion answering. ArXiv, abs/2412.15540.                   Leveraging cross-domain experience for agentic prob-
+                                                            lem solving. ArXiv, abs/2507.06229.
+Saksham Sahai Srivastava and Haoyu He. 2025. Mem-
+   orygraft: Persistent compromise of llm agents         Mohammad Tavakoli, Alireza Salemi, Carrie Ye, Mo-
+   via poisoned experience retrieval. Preprint,             hamed Abdalla, Hamed Zamani, and J. Ross Mitchell.
+   arXiv:2512.16962.                                        2025. Beyond a million tokens: Benchmarking
+                                                            and enhancing long-term memory in llms. ArXiv,
+Theodore R. Sumers, Shunyu Yao, Karthik Narasimhan,         abs/2510.27246.
+   and Thomas L. Griffiths. 2023. Cognitive architec-
+   tures for language agents. Trans. Mach. Learn. Res.,  Yuchen Tian, Ruiyuan Huang, Xuanwu Wang, Jing
+   2024.                                                    Ma, Zengfeng Huang, Ziyang Luo, Hongzhan Lin,
+   Da Zheng, and Lun Du. 2025a. Evolprover: Advanc-       Piaohong Wang, Motong Tian, Jiaxian Li, Yuan
+   ing automated theorem proving by evolving formal-         Liang, Yuqing Wang, Qianben Chen, Tiannan Wang,
+   ized problems via symmetry and difficulty. Preprint,      Zhicong Lu, Jiawei Ma, Yuchen Eleanor Jiang, and
+   arXiv:2510.00732.                                         Wangchunshu Zhou. 2025c. O-mem: Omni memory
+                                                             system for personalized, long horizon, self-evolving
+Yuchen Tian, Weixiang Yan, Qian Yang, Xuandong               agents.
+   Zhao, Qian Chen, Wen Wang, Ziyang Luo, Lei Ma,
+   and Dawn Song. 2025b. Codehalu: Investigating          Rongzheng Wang, Shuang Liang, Qizhi Chen, Yihong
+   code hallucinations in llms via execution-based ver-      Huang, Muquan Li, Yizhuo Ma, Dongyang Zhang,
+   ification. Proceedings of the AAAI Conference on          Ke Qin, and Man-Fai Leung. 2025d. Graphco-
+   Artificial Intelligence, 39(24):25300-25308.              gent: Mitigating llms'working memory constraints
+                                                             via multi-agent collaboration in complex graph un-
+Hugo Touvron, Thibaut Lavril, Gautier Izacard, Xavier        derstanding.
+   Martinet, Marie-Anne Lachaux, Timothée Lacroix,
+   Baptiste Rozière, Naman Goyal, Eric Hambro, Faisal     Sen Wang, Bangwei Liu, Zhenkun Gao, Lizhuang Ma,
+   Azhar, Aurélien Rodriguez, Armand Joulin, Edouard         Xuhong Wang, Yuan Xie, and Xin Tan. 2026. Ex-
+   Grave, and Guillaume Lample. 2023. Llama: Open            plore with long-term memory: A benchmark and mul-
+   and efficient foundation language models. CoRR,           timodal llm-based reinforcement learning framework
+   abs/2302.13971.                                           for embodied exploration. ArXiv, abs/2601.10744.
+
+Khanh-Tung Tran, Dung Dao, Minh-Duong Nguyen,             Shan Wang, Maying Shen, Nadine Chang, Chuong
+   Quoc-Viet Pham, Barry O'Sullivan, and Hoang D.            Nguyen, Hongdong Li, and José M. Álvarez. 2025e.
+   Nguyen. 2025. Multi-agent collaboration mecha-            Mitigating multimodal hallucinations via gradient-
+   nisms: A survey of llms. ArXiv, abs/2501.06322.           based self-reflection. ArXiv, abs/2509.03113.
+
+Ioannis C. Tsaknakis, Bingqing Song, Shuyu Gan,           Siyuan Wang, Zhongyu Wei, Yejin Choi, and Xiang
+   Dongyeop Kang, Alfredo García, Gaowen Liu,                Ren. 2024b. Symbolic working memory enhances
+   Charles Fleming, and Mingyi Hong. 2025. Do llms           language models for complex rule application. ArXiv,
+   recognize your latent preferences? a benchmark for        abs/2408.13654.
+   latent information discovery in personalized interac-
+   tion. ArXiv, abs/2510.17132.                           Xiaohan Wang, Yuhui Zhang, Orr Zohar, and Serena
+                                                             Yeung-Levy. 2024c. Videoagent: Long-form video
+Chunhui Wan, Xunan Dai, Zhuo Wang, Minglei Li, Yan-          understanding with large language model as agent.
+   peng Wang, Yinan Mao, Yu Lan, and Zhiwen Xiao.            In European Conference on Computer Vision.
+   2025. Loongflow: Directed evolutionary search via a
+   cognitive plan-execute-summarize paradigm.             Yu Wang and Xi Chen. 2025. Mirix: Multi-agent
+                                                             memory system for llm-based agents. ArXiv,
+Luanbo Wan and Weizhi Ma. 2025. Storybench: A dy-            abs/2507.07957.
+   namic benchmark for evaluating long-term memory
+   with multi turns. ArXiv, abs/2506.13356.               Zihan Wang, Kangrui Wang, Qineng Wang, Pingyue
+                                                             Zhang, Linjie Li, Zhengyuan Yang, Kefan Yu,
+Fang Wang, Tianwei Yan, Zonghao Yang, Minghao Hu,            Minh Nhat Nguyen, Licheng Liu, Eli Gottlieb, Mon-
+   Jun Zhang, Zhunchen Luo, and Xiaoying Bai. 2025a.         ica Lam, Yiping Lu, Kyunghyun Cho, Jiajun Wu,
+   Deepmel: A multi-agent collaboration framework for        Fei-Fei Li, Lijuan Wang, Yejin Choi, and Manling Li.
+   multimodal entity linking. ArXiv, abs/2508.15876.         2025f. Ragen: Understanding self-evolution in llm
+                                                             agents via multi-turn reinforcement learning. ArXiv,
+Hengyi Wang, Haizhou Shi, Shiwei Tan, Weiyi Qin,             abs/2504.20073.
+   Wenyuan Wang, Tunyu Zhang, Akshay Uttama
+   Nambi, Tanuja Ganu, and Hao Wang. 2024a. Mul-          Zora Zhiruo Wang, Apurva Gandhi, Graham Neubig,
+   timodal needle in a haystack: Benchmarking long-          and Daniel Fried. 2025g. Inducing programmatic
+   context capability of multimodal large language mod-      skills for agentic tasks. ArXiv, abs/2504.06821.
+   els. In North American Chapter of the Association
+   for Computational Linguistics.                         Zora Zhiruo Wang, Jiayuan Mao, Daniel Fried, and
+                                                             Graham Neubig. 2024d. Agent workflow memory.
+Jiongxiao Wang, Qiaojing Yan, Yawei Wang, Yijun              ArXiv, abs/2409.07429.
+   Tian, Soumya Smruti Mishra, Zhichao Xu, Megha
+   Gandhi, Panpan Xu, and Lin Lee Cheong. 2025b.          Tianxin Wei, Noveen Sachdeva, Benjamin Coleman,
+   Reinforcement learning for self-improving agent with      Zhankui He, Yuanchen Bei, Xuying Ning, Mengt-
+   skill library.                                            ing Ai, Yunzhe Li, Jingrui He, Ed Huai hsin Chi,
+                                                             Chi Wang, Shuo Chen, Fernando Pereira, Wang-
+Lei Wang, Chengbang Ma, Xueyang Feng, Zeyu Zhang,            Cheng Kang, and Derek Zhiyuan Cheng. 2025a. Evo-
+   Hao ran Yang, Jingsen Zhang, Zhi-Yang Chen, Ji-           memory: Benchmarking llm agent test-time learning
+   akai Tang, Xu Chen, Yankai Lin, Wayne Xin Zhao,           with self-evolving memory.
+   Zhewei Wei, and Ji rong Wen. 2023. A survey
+   on large language model based autonomous agents.
+   Frontiers of Computer Science, 18.
+Xiwen Wei, Mustafa Munir, and Radu Marculescu.              Huaxiu Yao. 2026. Skillrl: Evolving agents via recur-
+   2025b. Mitigating intra- and inter-modal forgetting      sive skill-augmented reinforcement learning. ArXiv,
+   in continual learning of unified multimodal models.      abs/2602.08234.
+   ArXiv, abs/2512.03125.
+                                                         Peng Xia, Peng Xia, Kaide Zeng, Jiaqi Liu, Can Qin,
+Zhepei Wei, Wenlin Yao, Yao Liu, Weizhi Zhang,              Fang Wu, Yiyang Zhou, Caiming Xiong, and Huaxiu
+   Qin Lu, Liang Qiu, Changlong Yu, Puyang Xu,              Yao. 2025b. Agent0: Unleashing self-evolving
+   Chao Zhang, Bing Yin, Hyokun Yun, and Lihong             agents from zero data via tool-integrated reasoning.
+   Li. 2025c. Webagent-r1: Training web agents via
+   end-to-end multi-turn reinforcement learning. ArXiv,  Chaojun Xiao, Pengle Zhang, Xu Han, Guangxuan Xiao,
+   abs/2505.16421.                                          Yankai Lin, Zhengyan Zhang, Zhiyuan Liu, Song
+                                                            Han, and Maosong Sun. 2024. Infllm: Training-free
+Siwei Wen, Zhangcheng Wang, Xingjian Zhang, Lei             long-context extrapolation for llms with an efficient
+   Huang, and Wenjun Wu. 2026. Eventmemagent:               context memory. Advances in Neural Information
+   Hierarchical event-centric memory for online video       Processing Systems 37.
+   understanding with adaptive tool use. ArXiv,
+   abs/2602.15329.                                       Guangxuan Xiao, Yuandong Tian, Beidi Chen, Song
+                                                            Han, and Mike Lewis. 2023. Efficient stream-
+Yuxin Wen, Yangsibo Huang, Tom Goldstein, Ravi              ing language models with attention sinks. ArXiv,
+   Kumar, Badih Ghazi, and Chiyuan Zhang. 2025.             abs/2309.17453.
+   Quantifying cross-modality memorization in vision-
+   language models. ArXiv, abs/2506.05198.               Yunzhong Xiao, Yangmin Li, Hewei Wang, Yunlong
+                                                            Tang, and Zora Zhiruo Wang. 2025. Toolmem: En-
+Rebecca Westhäußer, Wolfgang Minker, and Sebastian          hancing multimodal agents with learnable tool capa-
+   Zepf. 2025. Enabling personalized long-term interac-     bility memory. ArXiv, abs/2510.06664.
+   tions in llm-based agents through persistent memory
+   and user profiles. ArXiv, abs/2510.07925.             Zidi Xiong, Yuping Lin, Wenya Xie, Pengfei He, Jiliang
+                                                            Tang, Himabindu Lakkaraju, and Zhen Xiang. 2025.
+Cheng-Kuang Wu, Zhi Rui Tam, Chieh-Yen Lin, Yun-            How memory management impacts llm agents: An
+   Nung Chen, and Hung yi Lee. 2024. Streambench:           empirical study of experience-following behavior.
+   Towards benchmarking continuous improvement of           ArXiv, abs/2505.16067.
+   language agents. ArXiv, abs/2406.08747.
+                                                         Haoran Xu, Jiacong Hu, Ke Zhang, Lei Yu, Yuxin Tang,
+Rong Wu, Xiaoman Wang, Jianbiao Mei, Pinlong Cai,           Xinyuan Song, Yiqun Duan, Lynn Ai, and Bill Shi.
+   Daocheng Fu, Cheng Yang, Licheng Wen, Xuemeng            2025a. Sedm: Scalable self-evolving distributed
+   Yang, Yufan Shen, Yuxin Wang, and Botian Shi.            memory for agents. ArXiv, abs/2509.09498.
+   2025a. Evolver: Self-evolving llm agents through an
+   experience-driven lifecycle. ArXiv, abs/2510.16079.   Wujiang Xu, Zujie Liang, Kai Mei, Hang Gao, Juntao
+                                                            Tan, and Yongfeng Zhang. 2025b. A-mem: Agentic
+Shanglin Wu and Kai Shu. 2025. Memory in llm-based          memory for llm agents. ArXiv, abs/2502.12110.
+   multi-agent systems: Mechanisms, challenges, and
+   collective intelligence. TechRxiv, 2025(1210).        Siqiao Xue, Caigao Jiang, Wenhui Shi, Fangyin Cheng,
+                                                            Keting Chen, Hongjun Yang, Zhiping Zhang, Jian-
+Yaxiong Wu, Sheng Liang, Chen Zhang, Yichao Wang,           shan He, Hongyang Zhang, Ganglin Wei, Wang
+   Yongyue Zhang, Huifeng Guo, Ruiming Tang, and            Zhao, Fan Zhou, Danrui Qi, Hong Yi, Shaodong
+   Yong Liu. 2025b. From human memory to ai mem-            Liu, and Faqiang Chen. 2023. Db-gpt: Empower-
+   ory: A survey on memory mechanisms in the era of         ing database interactions with private large language
+   llms. ArXiv, abs/2504.15965.                             models. ArXiv, abs/2312.17449.
+
+Zhiheng Xi, Wenxiang Chen, Xin Guo, Wei He, Yiwen        Dawei Yan, Haokui Zhang, Guangda Huzhang, Yang
+   Ding, Boyang Hong, Ming Zhang, Junzhe Wang,              Li, Yibo Wang, Qin Chen, Zhao Xu, Wei Luo, Ying
+   Senjie Jin, Enyu Zhou, Rui Zheng, Xiaoran Fan, Xiao      Li, Wei Dong, and Chunhua Shen. 2026. M2: Dual-
+   Wang, Limao Xiong, Qin Liu, Yuhao Zhou, Weiran           memory augmentation for long-horizon web agents
+   Wang, Changhao Jiang, Yicheng Zou, and 11 others.        via trajectory summarization and insight retrieval.
+   2023. The rise and potential of large language model     ArXiv, abs/2603.00503.
+   based agents: A survey. ArXiv, abs/2309.07864.
+                                                         Sikuan Yan, Xiufeng Yang, Zuchao Huang, Ercong
+Menglin Xia, Victor Ruehle, Saravan Rajmohan, and           Nie, Zifeng Ding, Zonggen Li, Xiaowen Ma, Hin-
+   Reza Shokri. 2025a. Minerva: A programmable              rich Schutze, Volker Tresp, and Yunpu Ma. 2025a.
+   memory test benchmark for language models. ArXiv,        Memory-r1: Enhancing large language model agents
+   abs/2502.03358.                                          to manage and utilize memories via reinforcement
+                                                            learning. ArXiv, abs/2508.19828.
+Peng Xia, Jianwen Chen, Han Wang, Jiaqi Liu, Kaide
+   Zeng, Yu Wang, Siwei Han, Yiyang Zhou, Xujiang        Xue Yan, Zijing Ou, Mengyue Yang, Yan Song, Haifeng
+   Zhao, Haifeng Chen, Zeyu Zheng, Cihang Xie, and          Zhang, Yingzhen Li, and Jun Wang. 2025b. Memory-
+                                                            driven self-improvement for decision making with
+                                                            large language models. ArXiv, abs/2509.26340.
+An Yang, Anfeng Li, Baosong Yang, Beichen Zhang,          Yufei Yin, Qianke Meng, Minghao Chen, Jiajun Ding,
+   Binyuan Hui, Bo Zheng, Bowen Yu, Chang Gao,               Zhenwei Shao, and Zhou Yu. 2025. Videoarm: Agen-
+   Chengen Huang, Chenxu Lv, Chujie Zheng, Day-              tic reasoning over hierarchical memory for long-form
+   iheng Liu, Fan Zhou, Fei Huang, Feng Hu, Hao              video understanding. ArXiv, abs/2512.12360.
+   Ge, Haoran Wei, Huan Lin, Jialong Tang, and 40
+   others. 2025a. Qwen3 technical report. CoRR,           Zhangyue Yin, Qiushi Sun, Qipeng Guo, Zhiyuan Zeng,
+   abs/2505.09388.                                           Qinyuan Cheng, Xipeng Qiu, and Xuanjing Huang.
+                                                             2024. Explicit memory learning with expectation
+Ruihan Yang, Jiangjie Chen, Yikai Zhang, Siyu Yuan,          maximization. In Conference on Empirical Methods
+   Aili Chen, Kyle Richardson, Yanghua Xiao, and De-         in Natural Language Processing.
+   qing Yang. 2024. Selfgoal: Your language agents
+   already know how to achieve high-level goals. ArXiv,   Simon Yu, Gang Li, Weiyan Shi, and Pengyuan
+   abs/2406.04784.                                           Qi. 2025a. Polyskill: Learning generalizable
+                                                             skills through polymorphic abstraction. ArXiv,
+Wei Yang, Jinwei Xiao, Hongming Zhang, Qingyang              abs/2510.15863.
+   Zhang, Yanna Wang, and Bo Xu. 2025b. Coarse-to-
+   fine grounded memory for llm agent planning. ArXiv,    Wenhao Yu, Zhenwen Liang, Chengsong Huang, Kis-
+   abs/2508.15305.                                           han Panaganti, Tianqing Fang, Haitao Mi, and Dong
+                                                             Yu. 2025b. Guided self-evolving llms with minimal
+Yanlai Yang and Mengye Ren. 2025. Memory story-              human supervision.
+   board: Leveraging temporal segmentation for stream-
+   ing self-supervised learning from egocentric videos.   Xiaomin Yu, Yi Xin, Wenjie Zhang, Chonghan Liu,
+   ArXiv, abs/2501.12254.                                    Hanzhen Zhao, Xiaoxing Hu, Xinlei Yu, Ziyue Qiao,
+                                                             Hao Tang, Xue Yang, Xiaobin Hu, Chengwei Qin,
+Yongjin Yang, Sinjae Kang, Juyong Lee, Dongjun Lee,          Hui Xiong, Yu Qiao, and Shuicheng Yan. 2026.
+   Se young Yun, and Kimin Lee. 2025c. Automated             Modality gap-driven subspace alignment training
+   skill discovery for language agents through explo-        paradigm for multimodal large language models.
+   ration and iterative feedback. ArXiv, abs/2506.04287.     ArXiv, abs/2602.07026.
+
+Zhilin Yang, Peng Qi, Saizheng Zhang, Yoshua Ben-         Ruifeng Yuan, Shichao Sun, Zili Wang, Ziqiang Cao,
+   gio, William W. Cohen, Ruslan Salakhutdinov, and          and Wenjie Li. 2023. Personalized large language
+   Christopher D. Manning. 2018. Hotpotqa: A dataset         model assistant with evolving conditional memory.
+   for diverse, explainable multi-hop question answer-       In International Conference on Computational Lin-
+   ing. In Conference on Empirical Methods in Natural        guistics.
+   Language Processing.
+                                                          Sizhe Yuen, Francisco Gomez Medina, Ting Su, Yali
+Shunyu Yao, Dian Yu, Jeffrey Zhao, Izhak Shafran,            Du, and Adam J. Sobey. 2025. Intrinsic mem-
+   Thomas L. Griffiths, Yuan Cao, and Karthik                ory agents: Heterogeneous multi-agent llm sys-
+   Narasimhan. 2023. Tree of thoughts: Deliberate            tems through structured contextual memory. ArXiv,
+   problem solving with large language models. ArXiv,        abs/2508.08997.
+   abs/2305.10601.
+                                                          Yunpeng Zhai, Shuchang Tao, Cheng Chen, Anni Zou,
+Shunyu Yao, Jeffrey Zhao, Dian Yu, Nan Du, Izhak             Ziqian Chen, Qingxu Fu, Shinji Mai, Li Yu, Jiaji
+   Shafran, Karthik Narasimhan, and Yuan Cao. 2022.          Deng, Zouying Cao, Zhaoyang Liu, Bolin Ding, and
+   React: Synergizing reasoning and acting in language       Jingren Zhou. 2025. Agentevolver: Towards efficient
+   models. ArXiv, abs/2210.03629.                            self-evolving agent system.
+
+Rui Ye, Zhongwang Zhang, Kuan Li, Huifeng Yin,            Genghan Zhang, Shaowei Zhu, Anjiang Wei, Zhenyu
+   Zhengwei Tao, Yida Zhao, Liangcai Su, Liwen               Song, Allen Nie, Zhen Jia, Nandita Vijaykumar, Yida
+   Zhang, Zile Qiao, Xinyu Wang, Pengjun Xie,                Wang, and Kunle Olukotun. 2025a. Accelopt: A
+   Fei Huang, Siheng Chen, Jingren Zhou, and                 self-improving llm agentic system for ai accelerator
+   Yong Jiang. 2025. Agentfold: Long-horizon web             kernel optimization.
+   agents with proactive context management. ArXiv,
+   abs/2510.24699.                                        Gui-Min Zhang, Muxin Fu, Guancheng Wan, Miao Yu,
+                                                             Kun Wang, and Shuicheng Yan. 2025b. G-memory:
+Howard Yen, Tianyu Gao, Minmin Hou, Ke Ding,                 Tracing hierarchical memory for multi-agent systems.
+   Daniel Fleischer, Peter Izsak, Moshe Wasserblat, and      ArXiv, abs/2506.07398.
+   Danqi Chen. 2024. Helmet: How to evaluate long-
+   context language models effectively and thoroughly.    Gui-Min Zhang, Muxin Fu, and Shuicheng Yan. 2025c.
+   ArXiv, abs/2410.02694.                                    Memgen: Weaving generative latent memory for self-
+                                                             evolving agents. ArXiv, abs/2509.24704.
+Woongyeong Yeo, Kangsan Kim, Jaehong Yoon, and
+   Sung Ju Hwang. 2025. Worldmm: Dynamic mul-             Gui-Min Zhang, Fanci Meng, Guancheng Wan, Zherui
+   timodal memory agent for long video reasoning.            Li, Kun Wang, Zhenfei Yin, Lei Bai, and Shuicheng
+   ArXiv, abs/2512.02425.                                    Yan. 2025d. Latentevolve: Self-evolving test-time
+                                                             scaling in latent space. ArXiv, abs/2509.24771.
+Guibin Zhang, Haotian Ren, Chong Zhan, Zhenhong            Junhao Zheng, Xidi Cai, Qiuke Li, Duzhen Zhang,
+   Zhou, Junhao Wang, He Zhu, Wangchunshu Zhou,               Zhongzhi Li, Yingying Zhang, Le Song, and Qianli
+   and Shuicheng Yan. 2025e. Memevolve: Meta-                 Ma. 2025. Lifelongagentbench: Evaluating llm
+   evolution of agent memory systems.                         agents as lifelong learners. ArXiv, abs/2505.11942.
+
+Haozhen Zhang, Quanyu Long, Jianzhu Bao, Tao Feng,         Qinqing Zheng, Mikael Henaff, Amy Zhang, Aditya
+   Weizhi Zhang, Haodong Yue, and Wenya Wang. 2026.           Grover, and Brandon Amos. 2024. Online intrin-
+   Memskill: Learning and evolving memory skills for          sic rewards for decision making agents from large
+   self-evolving agents. ArXiv, abs/2602.02474.               language model feedback. ArXiv, abs/2410.23022.
+
+Kai Zhang, Xiangchao Chen, Bo Liu, Tianci Xue,             Wanjun Zhong, Lianghong Guo, Qi-Fei Gao, He Ye, and
+   Zeyi Liao, Zhihan Liu, Xiyao Wang, Yuting Ning,            Yanlin Wang. 2023. Memorybank: Enhancing large
+   Zhaorun Chen, Xiaohan Fu, Jian Xie, Yuxuan Sun,            language models with long-term memory. ArXiv,
+   Boyu Gou, Qi Qi, Zihang Meng, Jianwei Yang,                abs/2305.10250.
+   Ning Zhang, Xian Li, Ashish Shah, and 11 others.
+   2025f. Agent learning via early experience. ArXiv,      Wangchunshu Zhou, Yuchen Eleanor Jiang, Peng Cui,
+   abs/2510.08558.                                            Tiannan Wang, Zhenxin Xiao, Yifan Hou, Ryan
+                                                              Cotterell, and Mrinmaya Sachan. 2023. Recurrent-
+Kongcheng Zhang, Qi Yao, Shunyu Liu, Wenjian Zhang,           gpt: Interactive generation of (arbitrarily) long text.
+   Mingcan Cen, Yang Zhou, Wenkai Fang, Yiru Zhao,            ArXiv, abs/2305.13304.
+   Baisheng Lai, and Mingli Song. 2025g. Replay fail-
+   ures as successes: Sample-efficient reinforcement       Yanfang Zhou, Xiaodong Li, Yuntao Liu, Yongqiang
+   learning for instruction following.                        Zhao, Xintong Wang, Zhenyu Li, Jinlong Tian, and
+                                                              Xinhai Xu. 2025a. M2pa: A multi-memory planning
+Muru Zhang, Ofir Press, William Merrill, Alisa Liu,           agent for open worlds inspired by cognitive theory.
+   and Noah A. Smith. 2023a. How language model               In Annual Meeting of the Association for Computa-
+   hallucinations can snowball. ArXiv, abs/2305.13534.        tional Linguistics.
+
+Puzhen Zhang, Xuyang Chen, Yu Feng, Yuhan Jiang,           Zijian Zhou, Ao Qu, Zhaoxuan Wu, Sunghwan Kim,
+   and Liqiu Meng. 2025h. Constructing coherent spa-          Sunghwan Kim, Alok Prakash, Daniela Rus, Jin-
+   tial memory in llm agents through graph rectification.     hua Zhao, Bryan Kian Hsiang Low, and Paul Liang.
+   ArXiv, abs/2510.04195.                                     2025b. Mem1: Learning to synergize memory and
+                                                              reasoning for efficient long-horizon agents. ArXiv,
+Yuxiang Zhang, Jiangming Shu, Ye Ma, Xueyuan Lin,             abs/2506.15841.
+   Shangxi Wu, and Jitao Sang. 2025i. Memory as ac-
+   tion: Autonomous context curation for long-horizon      Kunlun Zhu, Zijia Liu, Bingxuan Li, Muxin Tian, Yingx-
+   agentic tasks. Preprint, arXiv:2510.12635.                 uan Yang, Jiaxun Zhang, Pengrui Han, Qipeng Xie,
+                                                              Fuyang Cui, Weijia Zhang, Xiaoteng Ma, Xiaodong
+Zeyu Zhang, Quanyu Dai, Xiaohe Bo, Chen Ma, Rui Li,           Yu, Gowtham Ramesh, Jialian Wu, Zicheng Liu, Pan
+   Xu Chen, Jieming Zhu, Zhenhua Dong, and Ji-Rong            Lu, James Zou, and Jiaxuan You. 2025. Where llm
+   Wen. 2024. A survey on the memory mechanism of             agents fail and how they can learn from failures.
+   large language model-based agents. ACM Transac-            ArXiv, abs/2509.25370.
+   tions on Information Systems, 43:1 - 47.
+                                                           Jiaru Zou, Xiyuan Yang, Ruizhong Qiu, Gaotang Li,
+Zeyu Zhang, Quanyu Dai, Xu Chen, Rui Li, Zhongyang            Katherine Tieu, Pan Lu, Ke Shen, Hanghang Tong,
+   Li, and Zhenhua Dong. 2025j. Memengine: A uni-             Yejin Choi, Jingrui He, James Zou, Mengdi Wang,
+   fied and modular library for developing advanced           and Ling Yang. 2025. Latent collaboration in multi-
+   memory of llm-based agents. Companion Proceed-             agent systems.
+   ings of the ACM on Web Conference 2025.
+                                                           A Overview
+Zeyu Zhang, Yang Zhang, Haoran Tan, Rui Li, and
+   Xu Chen. 2025k. Explicit v.s. implicit memory: Ex-      We first provide a formal definition for the opera-
+   ploring multi-hop complex reasoning over personal-      tional framework of LLM agents and the evolution-
+   ized information. ArXiv, abs/2508.13250.                ary paradigms of memory mechanisms. Further-
+                                                           more, we categorize the primary drivers for this
+Zhenyu (Allen) Zhang, Ying Sheng, Tianyi Zhou, Tian-       evolution into three dimensions, emphasizing that
+   long Chen, Lianmin Zheng, Ruisi Cai, Zhao Song,         these driving forces constitute the fundamental fac-
+   Yuandong Tian, Christopher Ré, Clark W. Barrett,        tors supporting transformations in memory mecha-
+   Zhangyang Wang, and Beidi Chen. 2023b. H2o:             nisms and the inherent capabilities of LLM agents.
+   Heavy-hitter oracle for efficient generative inference  Based on the depth to which historical trajectories
+   of large language models. ArXiv, abs/2306.14048.        are utilized, this survey proposes an evolutionary
+                                                           framework consisting of three distinct stages:
+Siyan Zhao, Mingyi Hong, Yang Liu, Devamanyu Haz-
+   arika, and Kaixiang Lin. 2025. Do llms recognize
+   your preferences? evaluating personalized preference
+   following in llms. ArXiv, abs/2502.09597.
+  · Storage: As the foundational layer of evolu-          memory mechanisms, as well as characteris-
+    tion, this stage focuses on the faithful preser-      tics at the frontier. This perspective provides
+    vation of trajectories from interactions over         novel insights for research within this do-
+    a long duration to address constraints regard-        main.
+    ing the memory capacity of LLM agents.
+                                                        · Insights & Critical Analysis: This survey
+  · Reflection: Through the introduction of               provides original interpretations and an in-
+    loops for dynamic evaluation, the memory              depth analysis of the existing literature. For
+    mechanism transitions from a recorder of in-          instance, we propose a taxonomy from an
+    formation to an evaluator, thereby mitigating         evolutionary perspective, using the degree of
+    issues related to hallucinations and logical          utilization for trajectories of past interaction
+    errors within the memory of LLM agents.               as a benchmark. Furthermore, we summa-
+                                                          rize two pivotal characteristics of memory
+  · Experience: Representing the highest level            mechanisms in the stage of experience and
+    of cognition, this stage employs abstraction          identify several issues that remain underex-
+    across multiple trajectories to extract behav-        plored or unresolved.
+    ioral patterns of a higher order. This process
+    compresses redundant memory into heuristic          · Timeliness & Relevance: In the inaugural
+    strategies that are transferable and reusable.        year of LLM agents, this work represents
+                                                          the first survey to systematically examine
+Furthermore, we provide an in-depth discussion            memory mechanisms from a perspective of
+on two pivotal technological shifts required for          evolution, capturing research at the frontier
+memory mechanisms to advance toward the stage             through 2025. It addresses the urgent ne-
+of experience: active exploration and abstraction         cessity for adaptation and learning as agents
+across trajectories. These advancements enable            encounter the real world for the first time.
+LLM agents to transition from passive recipients of       Through the synthesis of existing literature,
+information to collectors of experience driven by         we provide a new foundation for further ex-
+specific goals, thereby enhancing the capacity for        ploration and innovation in this critical field.
+proactive generalization in tasks that are unknown.
+Finally, this survey discusses several valuable di-      Overall, this survey offers a novel perspective by
+rections for the future of memory mechanisms.         providing comprehensive coverage and an innova-
+Summary of Contribution. As a survey, our pri-        tive classification of memory evolution. We antici-
+mary objective is the synthesis and analysis of ex-   pate that these contributions will bridge the knowl-
+isting research, while providing novel insights and   edge gap regarding LLM agent memory mecha-
+perspectives for researchers who aim to understand    nisms and offer a foundational resource for future
+and design memory mechanisms. We believe that         research.
+our work offers significant novelty in the following
+aspects:                                              B Detail within the Evolutionary Path
+
+  · Scope & Coverage: To address the absence          Due to space constraints in the main text, we pro-
+    of a perspective on evolution and the sig-        vide detailed exposition of representative works
+    nificant fragmentation in contemporary re-        within each stage of the memory mechanism evolu-
+    search on memory mechanisms, this survey          tion in this section. For each work, we describe its
+    provides a comprehensive overview that is         core contribution, technical mechanism, and posi-
+    forward-looking. This work encompasses re-        tion within the evolutionary trajectory.
+    search that has been overlooked, the most re-
+    cent advancements, and theoretical perspec-       B.1 Storage
+    tives of a broader nature.
+                                                      The primary objective of the storage phase is the
+  · Organization & Structure: This survey             precise preservation of trajectories to the maxi-
+    constructs an evolutionary framework in           mum extent possible, which enables LLM agents
+    three stages to organize the manuscript. On       to maintain an accurate perception of both internal
+    this basis, we systematically delineate the       and external states (Xi et al., 2023). Although the
+    drivers and pathways for the development of       memory mechanisms of the storage phase provide
+                                                      the context necessary for continuity and reasoning,
+A Survey from Storage to Experience  Storage       Linear        Context Window Adaptation          e.g. PCW (Ratner et al., 2022), StreamingLLM (Xiao et al., 2023), SelfExtend (Jin et al., 2024)
+                                      (§B.1)       Vector         Information Sparsification           e.g. H2O (Zhang et al., 2023b), Quest (Tang et al., 2024b), LLMLingua (Jiang et al., 2023)
+                                                 Structured                                               e.g. ARMRAG (Melz, 2023), MemLong (Liu et al., 2024), Larimar (Das et al., 2024)
+                                                                      Semantic Retrieval                          e.g. MemoryBank (Zhong et al., 2023), Stanford Town (Park et al., 2023)
+                                     Reflection  Introspection        Weighted Retrieval               e.g. ChatDB (Hu et al., 2023), DB-GPT (Xue et al., 2023), MAC-SQL (Lee and Ko, 2025)            Evolution path
+                                       (§B.2)                          Tabular Database                e.g. MemGPT (Packer et al., 2023), MemoChat (Lu et al., 2023), MemOS (Li et al., 2025d)
+                                                 Environment          Tiered Architectures
+                                                 Coordination           Semantic Graphs        e.g. MemLLM (Modarressi et al., 2024), AriGraph (Anokhin et al., 2024), GraphReader (Li et al., 2024)
+
+                                     Experience  Explicit              Error Rectification         e.g. Reflexion (Shinn et al., 2023), TiM (Liu et al., 2023), LLM-MapRepair (Zhang et al., 2025h)
+                                        (§B.3)   Implicit           Dynamic Maintenance                e.g. Zep (Rasmussen et al., 2025), Mem0 (Chhikara et al., 2025), CAMA (Li et al., 2025a)
+                                                 Hybrid            Knowledge Compression
+                                                                    Environment Modeling            e.g. MemOrb (Huang et al., 2025b), LEGOMem (Han et al., 2025), AgentFold (Ye et al., 2025)
+                                                                    Decision Optimization              e.g. DEAL (Sun et al., 2024), ToolMem (Xiao et al., 2025), CLIN (Majumder et al., 2023)
+                                                                Multi-dimensional Calibration
+                                                                                                      e.g. Memory-R1 (Yan et al., 2025a), MDSF (Yan et al., 2025b), Self-Goal (Yang et al., 2024)
+                                                                     Heuristic Guidelines               e.g. MIRIX (Wang and Chen, 2025), CoGent (Wang et al., 2025d), CSR (Bo et al., 2024)
+                                                                     Procedural Primitives
+                                                                                                        e.g. FLEX (Cai et al., 2025b), ArcMem (Ho et al., 2025), LightMem (Fang et al., 2025a)
+                                                                       Latent Modulation            e.g. CASCADE (Huang et al., 2025a), IPS (Wang et al., 2025g), AccelOpt (Zhang et al., 2025a)
+                                                                   Parameter Internalization
+                                                                                                                   e.g. MemGen (Zhang et al., 2025c), LatentEvolve (Zhang et al., 2025d)
+                                                                      Experience Transfer           e.g. AgentEvolver (Zhai et al., 2025), Agent-LV (Zhang et al., 2025f), Verl (Jiang et al., 2025b)
+                                                                                               e.g. ReasoningBank (Ouyang et al., 2025),EvolveR (Wu et al., 2025a), Hybrid-Replay (Liu et al., 2026b)
+
+                                                 Figure 4: Taxonomy of the LLM agent memory mechanisms.
+
+they remain inherently susceptible to contamina-                                                   as a mechanical denoising process indepen-
+tion from the stochasticity and hallucinations of                                                  dent of agent reflection. Methods typically
+the underlying model. Prior research has addressed                                                 rely on statistical or attention-based heuris-
+the requirements for the writing, management, and                                                  tics to remove low-utility tokens. For exam-
+retrieval of memory within various environments                                                    ple, Zhang et al. (2023b) evicts tokens based
+by constructing memory architectures across three                                                  on cumulative attention scores, while Tang
+technical categories: linear, vector, and structured.                                              et al. (2024b) and Xiao et al. (2024) retrieve
+Linear. Linear storage represents the most primi-                                                  salient memory blocks via query-key sim-
+tive and intuitive form of memory mechanisms. It                                                   ilarity. Jiang et al. (2023) further identifies
+treats the records of interaction for LLM agents as                                                redundant segments through perplexity esti-
+a continuous stream of tokens arranged in chrono-                                                  mation. While effective for efficiency, these
+logical order, managing memory within the context                                                  methods operate without semantic abstrac-
+window through strict adherence to a strategy of                                                   tion.
+First-In, First-Out (FIFO). The work in this phase
+can be categorized into two components: adjust-                                                Vector. Vector storage mitigates the constraints of
+ment of the context window and sparsification of                                               capacity for memory storage by encoding interac-
+information.                                                                                   tion trajectories into spaces of high dimensionality.
+                                                                                               However, it also introduces a novel challenge: the
+  · Context Window Adaptation: Context win-                                                    efficient retrieval of memories relevant to the task
+    dow adaptation techniques seek to extend                                                   from massive repositories. Consequently, the focus
+    the usable input length of LLMs by modi-                                                   of research has transitioned toward the optimization
+    fying attention mechanisms, positional en-                                                 of retrieval. We categorize these methodologies
+    coding schemes, or input structures. Rep-                                                  into two classes: semantic retrieval and weighted
+    resentative approaches include optimizing                                                  retrieval.
+    intrinsic attention computation (Xiao et al.,
+    2023), remapping positional encodings to en-                                                 · Semantic Retrieval: Semantic retrieval con-
+    able longer sequences (Jin et al., 2024), and                                                  stitutes the foundational approach to vector
+    restructuring inputs to mitigate length con-                                                   memory, where relevance is determined by
+    straints (Ratner et al., 2022). These methods                                                  geometric proximity in embedding space.
+    expand raw storage capacity but do not alter                                                   Melz (2023) retrieves historical reasoning
+    the semantics of stored trajectories.                                                          chains via semantic alignment, while Liu
+                                                                                                   et al. (2024) integrates fine-grained retrieval-
+  · Information Sparsification: Information                                                        attention during decoding to sustain long-
+    sparsification treats memory compression                                                       context reasoning. Das et al. (2024) further
+    internalizes episodic memory into a latent           · Semantic Graphs: Graph memory repre-
+    matrix, enabling one-shot read-write opera-            sents interaction histories as networks of en-
+    tions. Despite improved recall, these meth-            tities and relations, enabling structured rea-
+    ods treat retrieved content as flat historical         soning beyond flat storage. Triplet-based
+    evidence.                                              extraction supports precise updates and re-
+                                                           trieval (Modarressi et al., 2024), while
+  · Weighted Retrieval: Weighted retrieval ex-             neuro-symbolic approaches integrate logical
+    tends semantic similarity by assigning dif-            constraints into graph representations (Wang
+    ferentiated importance to memories using               et al., 2024b). Graph-based world models
+    multi-dimensional scoring signals. Zhong               further support environment-centric reason-
+    et al. (2023) models temporal decay via the            ing (Anokhin et al., 2024), and coarse-to-
+    Ebbinghaus Forgetting Curve, while Park                fine traversal over text graphs enables ef-
+    et al. (2023) retrieves memories based on              ficient long-context retrieval (Zhou et al.,
+    a weighted combination of relevance, re-               2023; Lu et al., 2023).
+    cency, and importance. Such mechanisms
+    improve prioritization but remain retrieval-       B.2 Reflection
+    centric rather than abstraction-driven.
+                                                       Although the storage stage explores diverse meth-
+Structured. Structured storage preserves memory        ods for the preservation of memory to ensure the
+through predefined structures of relationships. This   consistency of LLM agents over the long term,
+paradigm emphasizes the integrity and enforcement      these approaches do not fundamentally address the
+of knowledge within memory, which facilitates pre-     quality of memory. Raw trajectories of interaction
+cise operations, complex reasoning based on logic,     inevitably conflate successful sequences with hal-
+and efficient retrieval across multiple hops. Based    lucinations, errors in logic, and attempts that are
+on the method of organization, we categorize these     invalid (Zhang et al., 2023a; Ghasemabadi and Niu,
+systems into three classes: tabular databases, tiered  2025; Zhang et al., 2025g). Without the application
+architectures and semantic graphs.                     of evaluation, the passive storage of all trajectories
+                                                       leads to an accumulation of errors and the repeti-
+  · Tabular Database: Database-backed mem-             tion of failures. The reflection stage incorporates
+    ory systems leverage mature relational             introspection, the environment, and coordination
+    databases to store agent knowledge in struc-       as signals for feedback to rectify and denoise his-
+    tured tabular form. Early work frames              torical trajectories, thereby producing memory of
+    databases as symbolic memory (Hu et al.,           higher quality.
+    2023), while subsequent approaches trans-          Introspection. Introspective reflection represents
+    late natural language queries into SQL via         an internal cognitive process that utilizes the LLM
+    specialized controllers for secure and effi-       agent's own knowledge to evaluate, refine, and re-
+    cient access (Xue et al., 2023). Multi-agent       structure memory without the need for external
+    extensions further distribute database con-        feedback. Current research achieves introspection
+    struction and maintenance across specialized       through three distinct functional pathways: error
+    roles (Lee and Ko, 2025).                          rectification, dynamic maintenance, and knowledge
+                                                       compression.
+  · Tiered Architectures: Tiered memory
+    architectures draw inspiration from com-             · Error Rectification: targets hallucinations
+    puter storage hierarchies and human cog-               and multi-step reasoning errors by verify-
+    nition to balance capacity and access la-              ing and repairing stored trajectories through
+    tency. MemGPT (Packer et al., 2023)                    self-critique. Shinn et al. (2023) intro-
+    introduces a dual-layer design separating              duces Reflexion, which prompts agents to
+    main and external context, enabling virtual            reflect on failed trajectories and distill cor-
+    context expansion. Cognitive-inspired sys-             rective feedback into textual memory. This
+    tems such as SWIFT-SAGE (Lin et al.,                   mechanism enables systematic error correc-
+    2023) dynamically adjust retrieval intensity,          tion and sustained performance improve-
+    while streaming-update architectures main-             ment across episodes, establishing introspec-
+    tain long-term stability without exhaustive            tive reflection as a central mechanism rather
+    retrieval (Zhou et al., 2023; Lu et al., 2023).
+    than a peripheral heuristic.Building on this             et al. (2025) summarizes tool behavior from
+    paradigm, Liu et al. (2023) introduces a                 execution outcomes. Preference-aware up-
+    post-reasoning verification stage to retain              dates integrate short-term variation with
+    only validated memories, while Zhang et al.              long-term trends (Sun et al., 2025b), and
+    (2025h) detects contradictory or erroneous               EM-based formulations ensure memory con-
+    segments through introspective consistency               sistency under distribution shifts (Yin et al.,
+    checks, thereby limiting error accumulation              2024).
+    and propagation.
+                                                           · Decision Optimization: Decision optimiza-
+  · Dynamic Maintenance: Dynamic mainte-                     tion treats memory management as a learn-
+    nance focuses on lifecycle management of                 able policy guided by environmental rewards
+    memory content. Li et al. (2025a) incremen-              or execution feedback. Yan et al. (2025a)
+    tally updates internal knowledge schemas                 learns discrete actions from outcome-based
+    via clustering, while Rasmussen et al. (2025)            rewards, while Yan et al. (2025b) refines
+    and Chhikara et al. (2025) maintain con-                 memory quality using value-annotated de-
+    tinuity by parsing and updating structured               cision trajectories. For complex planning,
+    entity relations. At the system level, rule-             interaction feedback is used to validate and
+    based controllers inspired by operating sys-             prune goal hierarchies (Yang et al., 2024).
+    tems strategically update and persist core
+    memories (Packer et al., 2023; Zhou et al.,          Coordination. Collaborative reflection leverages
+    2025b; Kang et al., 2025).                           the specialization of roles and mechanisms for con-
+                                                         sensus within systems of multiple agents to extend
+  · Knowledge Compression: Knowledge com-                the process of reflection from the level of the indi-
+    pression distills high-dimensional trajecto-         vidual to that of the collective. Through delibera-
+    ries into compact and reusable representa-           tion across multiple agents, this paradigm allevi-
+    tions. Huang et al. (2025b) generates struc-         ates cognitive bottlenecks and hallucinations that
+    tured reflections to extract coherent character      are common in architectures with a single model
+    profiles, while Han et al. (2025) decomposes         during the processing of trajectories of complex
+    interaction sequences into modular proce-            memory.
+    dural memories. Multi-granularity abstrac-
+    tion further aligns distilled memories with            · Multi-dimensional Calibration: Multi-
+    task demands (Tan et al., 2025; Yang et al.,             dimensional calibration realizes distributed
+    2025b), and context-folding techniques pre-              memory management through heteroge-
+    serve working-context efficiency during rea-             neous agent societies. Wang and Chen (2025)
+    soning (Sun et al., 2025c; Ye et al., 2025; Li           coordinates core, episodic, and semantic
+    et al., 2025b).                                          memory modules to process multimodal long
+                                                             contexts. Wang et al. (2025d) decomposes
+Environment. While introspective reflection lever-           graph reasoning into perception, caching,
+ages knowledge within the model to refine memory,            and execution roles to reduce context loss.
+it inherently carries a risk of inconsistency with fac-      Narrative-level coherence is achieved by in-
+tual reality. To mitigate this risk, reflection from         tegrating episodic and semantic memories
+the environment utilizes outcomes in the real world          across agents (Balestri and Pescatore, 2025).
+to actively optimize behavior and calibrate the in-          Moreover, Ozer et al. (2025) and Bo et al.
+ternal knowledge of the model. Current research              (2024) further enhance reasoning consis-
+primarily proceeds along two trajectories: environ-          tency and collaboration efficiency in agent
+ment modeling and decision optimization.                     societies by implementing collaborative re-
+                                                             flection across diverse roles and personalized
+  · Environment Modeling: Environmental                      feedback mechanisms.
+    modeling aligns internal memory with dy-
+    namic external conditions such as environ-           B.3 Experience
+    ments, tools, and user preferences. Sun et al.
+    (2024) enables agents to infer and validate          Although reflection mechanisms mitigate halluci-
+    world rules from demonstrations, while Xiao          nations (Tian et al., 2025b) and noise through eval-
+                                                         uation, their corrective efficacy remains at the level
+of trajectories and has not yet yielded knowledge          ward structured schemas. Ho et al. (2025)
+at the level of strategy that is transferable (Shinn       and Zhang et al. (2025b) abstract multi-
+et al., 2023; Renze and Guven, 2024). In addition,         turn reasoning traces into experience graphs,
+reflection focused on trajectories may lead to a lin-      leveraging topological structures to capture
+ear expansion of the memory bank, which imposes            logical dependencies and enable effective
+a burden for inference and may potentially result in       storage and reuse of collaboration patterns
+a characteristic of following trajectories (Hong and       and high-level cognitive principles. More-
+He, 2025; Zhu et al., 2025; Fu et al., 2025). Conse-       over, Cai et al. (2025b) organizes heuristic
+quently, memory mechanisms must transcend the              knowledge into modular and compositional
+limitations of reflecting on the past and move to-         units, enabling systematic reuse across tasks.
+ward a stage of experience for the guidance of the
+future. At this stage, memory mechanisms abstract        · Procedural Primitives: Procedural primi-
+universal wisdom that is independent of context            tives represent the abstraction of complex
+from clusters of trajectories; through this process,       reasoning chains into executable entities, de-
+LLM agents (Luo et al., 2026; Tian et al., 2025a)          signed to significantly reduce planning over-
+truly liberate themselves from memory banks that           head. Wang et al. (2025g) proposes a skill
+are verbose and complex, achieving zero-shot trans-        induction mechanism that encapsulates high-
+fer to scenarios that are unknown by means of skills       frequency action sequences into functions,
+or rules that are intuitive. Research on the stage of      enabling agents to invoke complex skills as
+experience achieves prospective wisdom through             atomic actions. Zhang et al. (2025a) extends
+the abstraction of experience in forms that are ex-        this executable paradigm to hardware op-
+plicit, implicit, and hybrid.                              timization, enabling agents to accumulate
+Explicit. Explicit experience abstracts patterns           kernel optimization skills that iteratively en-
+of knowledge that are readable by humans, ed-              hance accelerator performance. In this line
+itable, and generalizable from clusters of trajec-         of work, Huang et al. (2025a) enables the
+tories, framing experiential memory as insights of         composition and cascading execution of such
+wisdom that allow for direct retrieval and reuse,          procedural primitives, allowing agents to
+analogous to the consultation of a reference man-          construct complex behaviors through struc-
+ual or a library of functions. This methodology            tured skill invocation.
+not only alleviates the pressure of inference but
+also provides LLM agents with capabilities for in-     Implicit. Implicit experience eschews the retrieval
+terpretability and self-evolution. Research on ex-     of discrete text and abstracts the history of inter-
+plicit experience can generally be categorized into    actions into implicit priors, thereby addressing the
+Heuristic Guidelines and Procedural Primitives.        overhead of inference and the constraints of con-
+                                                       text. Experiential memory is transformed into la-
+  · Heuristic Guidelines: Heuristic guidelines         tent variables within spaces of high dimensionality
+    serve to crystallize implicit intuition into ex-   or into parameters of the neural network. Based
+    plicit natural language strategies. In this do-    on the form of implementation for the transforma-
+    main, researchers focus on distilling experi-      tion, implicit experience is categorized into two
+    ence into textual rules: Ouyang et al. (2025)      trajectories: Latent Modulation and Parameter In-
+    abstracts key decision principles through          ternalization.
+    contrastive analysis of successful and failed
+    trajectories, while Suzgun et al. (2025) pro-        · Latent Modulation: Latent modulation op-
+    poses dynamically generated "prompt lists"             erates on the cognitive stream within con-
+    for real-time heuristic guidance. Xu et al.            tinuous high-dimensional latent space. By
+    (2025a) and Hassell et al. (2025) investi-             encoding experience into latent variables or
+    gate rule induction from supervisory sig-              activation states, this paradigm "weaves"
+    nals, achieving textual experience transfer            historical insights into current reasoning
+    via "cross-domain knowledge diffusion" and             in a parameter-free manner, circumventing
+    "semantic task guidance," respectively. To             expensive parameter updates. Zhang et al.
+    transcend linear text limitations in modeling          (2025c) introduces the MemGen framework,
+    complex dependencies, recent work shifts to-           employing a "Memory Weaver" to dynam-
+                                                           ically generate and inject latent token se-
+    quences conditioned on current reasoning             · Experience Transfer: Experience Transfer
+    state. Zhang et al. (2025d) achieves smooth            facilitates capability internalization by pro-
+    transfer from historical experience to current         gressively decoupling agents from external
+    decision-making without altering static pa-            retrieval reliance. Wu et al. (2025a) employs
+    rameters, using alternating Fast Retrieval and         offline distillation to abstract complex trajec-
+    Slow Integration within latent space.                  tories into structured experience for infer-
+                                                           ence guidance, then uses these experiences
+  · Parameter Internalization: Parameter In-               to generate high-quality trajectories for pol-
+    ternalization transforms explicit trajecto-            icy optimization. By transferring knowledge
+    ries into intrinsic capabilities within model          from explicit experience pools into model pa-
+    weights. Through gradient updates, this                rameters via gradient updates, this approach
+    mechanism instills adaptive priors into LLM            eliminates dependence on external retrieval
+    agents, enabling effective navigation of com-          systems. Liu et al. (2026b); Ouyang et al.
+    plex environments. For context distilla-               (2025) maintain an explicit experience replay
+    tion, Alakuijala et al. (2025) proposes itera-         buffer preserving high-value exploration tra-
+    tive distillation to internalize corrective hints      jectories. Through a hybrid On-Policy and
+    into model weights. Liu et al. (2025b) con-            Off-Policy update strategy, this framework
+    verts business rules into model priors, alle-          leverages explicit memory for immediate ex-
+    viating retrieval overload in RAG systems,             ploration while encoding successful experi-
+    while Zhai et al. (2025) introduces "Expe-             ences into network parameters via offline up-
+    rience Stripping," eliminating retrieval seg-          dates, ensuring agents sustain optimal perfor-
+    ments during training to force internaliza-            mance through internalized "intuition" with-
+    tion of explicit experience into autonomous            out external support.
+    reasoning capabilities independent of exter-
+    nal auxiliaries. For Reinforcement Learning        C Extended Discussion on Multimodal
+    (RL), Zhang et al. (2025f) proposes a pio-              Memory Mechanisms
+    neering early experience paradigm, leverag-
+    ing implicit world models and sub-reflective       Multimodal memory extends the conventional
+    prediction to internalize trial-and-error ex-      paradigm of memory centered on text to encom-
+    perience into policy priors without extrinsic      pass heterogeneous modalities of perception, prin-
+    rewards. Lyu et al. (2025) achieves strate-        cipally involving signals of a visual and auditory
+    gic transformation from Reflection to Experi-      nature (Long et al., 2025a). The inputs for multi-
+    ence by applying RL to student-generated re-       modal memory comprise text, audio, and images,
+    flections. Feng et al. (2025a) proposes group-     with video constituting a composite input that in-
+    based policy optimization for fine-grained         tegrates both auditory and visual components (Yin
+    experience internalization across multi-turn       et al., 2025). As LLM agents begin to operate
+    interactions. Jiang et al. (2025b) establishes     within hybrid environments that necessitate the
+    standardized alignment between RL and tool         joint execution of linguistic reasoning and percep-
+    invocation, enhancing agents' capacity to          tion across multiple dimensions, such as embodied
+    transmute tool-use experience into intrinsic       navigation and interactive web browsing, mech-
+    strategies.                                        anisms for memory are required to facilitate the
+                                                       capture of the rich dependencies across modalities
+Hybrid. Hybrid experience aims to transcend            that arise within interactions situated in the real
+the dichotomy between explicit and implicit            world (Wang et al., 2026; Chen et al., 2026; Yan
+paradigms by establishing a dynamic "Accumulate-       et al., 2026). In what follows, we summarize the
+Internalize" cycle. This paradigm directly ad-         principal body of work on multimodal memory and
+dresses the challenges of "Storage Explosion" and      delineate the distinctive challenges that differenti-
+"Retrieval Latency" encountered by explicit expe-      ate it from memory of a purely textual nature.
+rience repositories during long-term interactions,
+while simultaneously mitigating the tension caused     C.1 Current Approaches.
+by parameter updates lagging behind environmen-
+tal dynamics.                                          Research on mechanisms for multimodal memory
+                                                       within LLM agents remains predominantly con-
+                                                       fined to the stage of Storage, with comparatively
+limited work addressing the stages of Reflection        cient (Yeo et al., 2025).
+and Experience. We discuss existing methodolo-
+gies along two salient dimensions: Multimodal           C.2 Unique Challenges.
+Representation and Multimodal Retrieval.
+Multimodal Representation. Unified semantic             In contrast to mechanisms of memory centered
+representation centered on text currently constitutes   on text, multimodal memory confronts a series of
+the predominant paradigm within mechanisms of           distinctive challenges that arise from the hetero-
+multimodal memory for LLM agents (Liu et al.,           geneity across modalities. We elaborate this discus-
+2025d; Chen et al., 2025a). The central premise of      sion principally along three dimensions, addressing
+this approach resides in the utilization of pretrained  Multimodal Alignment, Temporal Consistency, and
+Multimodal Large Language Models (MLLMs) for            subsequently Consolidation and Forgetting.
+the textualization of all modalities; nevertheless,     Multimodal Alignment. Multimodal memory ne-
+such a process incurs the loss of information in-       cessitates the binding of signals of a visual, au-
+herent to the original modalities that resists ade-     ditory, and textual nature onto a unified semantic
+quate articulation within text. To mitigate the loss    unit, a process considerably more arduous than
+of visual information introduced through textual-       alignment confined to a single modality. The gran-
+ization, recent work has begun to construct dense       ularity of signals across distinct modalities exhibits
+representations of the original modalities, which       a pronounced asymmetry, the density of seman-
+are subsequently stored in juxtaposition with their     tic content differs by a substantial margin, and the
+corresponding summaries in text (Wen et al., 2026;      representations of a unified entity across disparate
+Bo et al., 2025). Through indexing across multi-        modalities may diverge entirely (Cai et al., 2025a;
+ple pathways and retrieval of an adaptive nature,       Wang et al., 2025a; Yu et al., 2026). Erroneous
+these approaches seek to compensate for the atten-      alignment not only precludes the recall of mem-
+dant loss of information. Furthermore, embedding        ory in its complete form, but may further introduce
+within a shared space is frequently invoked as one      signals of an irrelevant character that impede the
+of the instruments leveraged by mechanisms of           process of reasoning (Lu et al., 2026).
+multimodal memory (He et al., 2024a). Taken as a        Temporal Consistency. Multimodal memory un-
+whole, existing research negotiates a trade-off be-     folds along a continuous axis of time rather than
+tween operations at the semantic level and fidelity     in terms of discrete tokens as with text, which ren-
+to the original modalities, progressively transition-   ders the organization of length and granularity for
+ing from paradigms of pure textualization toward        units of memory a consideration of significant im-
+hybrid representations characterized by the juxta-      portance (Yang and Ren, 2025; Lian et al., 2026).
+position of multiple modalities.                        Furthermore, the boundaries of events frequently
+Multimodal Retrieval. Hybrid representations            fail to align with physical time: a single action
+juxtapose multiple modalities, so queries and tar-      may traverse visual variations spanning multiple
+gets frequently cross modality boundaries, and dif-     frames as well as segments of speech of extended
+ferent queries vary substantially in how much they      duration (Wang et al., 2024c). This state of af-
+demand semantic abstraction versus perceptual fi-       fairs imposes upon mechanisms of memory the
+delity. To address this, three retrieval strategies     requirement for designs that incorporate adaptive
+have emerged. Parallel fusion retrieves along se-       segmentation, indexing across multiple scales, and
+mantic, lexical, and visual channels simultaneously,    consolidation of a hierarchical nature.
+then integrates the complementary signals through       Consolidation and Forgetting. In contrast to
+rank fusion to improve recall robustness (Feng          memory of a purely textual nature, wherein the
+et al., 2026; Liu et al., 2026a). Hierarchical re-      processes of forgetting and consolidation may be
+trieval cascades recall across levels of abstraction,   executed within a unified semantic space, multi-
+first filtering coarsely over semantic summaries and    modal memory confronts a series of difficulties
+then escalating to the original modalities for precise  that are considerably more distinctive. First, the
+reconstruction (Lin et al., 2025b). Agent-driven        similarity across disparate modalities cannot be as-
+retrieval, by contrast, delegates the process to the    sessed through a unified metric (Wen et al., 2025;
+agent itself, which selects modality-specific queries   Wei et al., 2025b). Second, the temporal validity
+across multiple turns according to its current in-      associated with distinct modalities diverges by a
+tent, until the acquired information is deemed suffi-   pronounced margin: textual preferences may retain
+                                                        efficacy over extended durations, whereas the state
+of a scene may forfeit validity immediately follow-          ties of agents by embedding reasoning tasks
+ing a transformation of the environment, rendering           within backgrounds of a million words (Ku-
+the adaptation of functions for decay a matter of            ratov et al., 2024) and assessing the reliabil-
+considerable difficulty (Alqithami, 2025). Finally,          ity of memory within a long context (Yen
+the process of consolidation may incur the loss              et al., 2024), or extend these challenges to
+of perceptual details inherent to signals of a non-          the domain of vision (Wang et al., 2024a).
+textual nature (Lian et al., 2026).                          The core of this area is the evaluation of the
+                                                             authentic capacity for memory in the model.
+   Taken as a whole, existing research on mul-
+timodal memory is concentrated predominantly               · Interactive Consistency: Research regard-
+within the stage of Storage, whereas work pertain-           ing the category of Interactive Consistency is
+ing to the stages of Reflection and Experience re-           based on interaction across sessions, which
+mains exceedingly scarce. This distribution indi-            requires LLM agents to maintain memory
+cates that multimodal memory resides at an early             with consistency throughout such interac-
+phase of its development. Future research will               tions. Examples include the provision of
+likely address, at the level of Reflection, issues such      frameworks for coherent dialogue at the
+as errors and hallucinations that manifest across            scale of ten million words (Tavakoli et al.,
+modalities, and will further explore, within the             2025), the direct evaluation of the update of
+stage of Experience, the extraction of policy pri-           knowledge and the capacity for rejection dur-
+ors that are invariant to modality from clusters of          ing continuous interaction (Maharana et al.,
+trajectories of a multimodal nature (Wang et al.,            2024), and the detection of how consistency
+2025e; Allard et al., 2026; Lei et al., 2025).               and accuracy for personas are maintained
+                                                             over histories of long duration (Jia et al.,
+D Datasets and Benchmarks                                    2025; Zhong et al., 2023). The core of
+                                                             this stage is the assessment of the capacity
+Recently, the research community has developed               for memory with consistency over long dis-
+various datasets to evaluate the consistency over            tances.
+the long term and the capacity for self evolution of
+LLM agents within dynamic environments. How-               · Relational Fact: Benchmarks of the rela-
+ever, existing benchmarks still primarily assess the         tional fact category primarily evaluate the
+storage and retrieval of static data, which results in       capacity of LLM agents for semantic asso-
+a lack of evaluation for other critical capabilities of      ciation and reasoning across multiple hops.
+memory within scenarios of dynamic interaction.              This involves testing the ability of the model
+Following our proposed path of evolution (§4), we            for the integration of facts across docu-
+categorize these benchmarks into stages of storage,          ments and reasoning in multiple steps within
+reflection, and experience according to their pri-           the context of personal trivia (Zhang et al.,
+mary areas of focus. Detailed information for these          2025k; Yang et al., 2018), while adjacent
+benchmarks is provided in Table 2.                           fact-checking evaluation frameworks have
+Storage Stage. The storage stage serves as the               also involved knowledge recall and evidence
+cornerstone for mechanisms of memory, primar-                integration during multi-step factual reason-
+ily evaluating the capacity of LLM agents for the            ing (Lin et al., 2025a, 2026). Furthermore,
+accurate storage and retrieval of information over           certain frameworks focus on emotional sup-
+long distances across various scenarios, tasks, and          port and interactive scenarios to evaluate the
+modalities.                                                  model's capacity for memory recall across
+                                                             proactive and passive paradigms (He et al.,
+  · Extreme Context: Extreme context types                   2024b).
+    focus on probing the physical limits of mem-
+    ory in LLM agents, specifically the capacity         Reflection Stage. The core of the Reflection stage
+    for extracting and processing minute facts           is the evaluation of how agents transform raw tra-
+    within massive volumes of distracting in-            jectories into memory of high quality, with an em-
+    formation. For instance, these benchmarks            phasis on the denoising and fidelity of memory, the
+    define the actual effective window of the            deep alignment with characteristics of users, and
+    model through the retrieval of multiple nee-
+    dles (Hsieh et al., 2024), assess the capabili-
+the support for perception within complex environ-
+ments.
+
+  · Error Correction: Error correction primar-
+    ily evaluates whether errors or hallucinations
+    emerge during the lifecycle of the memory
+    system. For instance, it involves testing oper-
+    ations for the search, editing, and matching
+    of memory (Xia et al., 2025a), examining the
+    presence of hallucinations during the stages
+    of extraction or update (Chen et al., 2025b).
+
+  · Personalization: Personalization focuses on
+    the capacity for the extraction of deep per-
+    sonalization from the history of the agent,
+    which includes the mining of latent informa-
+    tion through reflection to identify implicit
+    preferences (Jiang et al., 2025a; Huang et al.,
+    2025c), traits of users (Du et al., 2024; Zhao
+    et al., 2025), key information (Yuan et al.,
+    2023; Li et al., 2025c), and shared compo-
+    nents (Tsaknakis et al., 2025; Kim et al.,
+    2024a).
+
+  · Dynamic Reasoning: Dynamic reasoning
+    emphasizes the critical role of memory in
+    reasoning across multiple steps and the per-
+    ception of environments with high complex-
+    ity. This involves the selective forgetting of
+    memory (Hu et al., 2025a), backtracking on
+    decisions (Wan and Ma, 2025), scenarios in
+    the real world (Deng et al., 2024; Miyai et al.,
+    2025), and the mechanisms for summariza-
+    tion and transition (Maharana et al., 2024).
+
+Experience Stage. The Experience Stage repre-
+sents the pinnacle of the evolutionary path of mem-
+ory mechanisms; at this phase, the focus shifts to-
+ward how LLM agents abstract general experience
+from fragmented trajectories within dynamic envi-
+ronments to facilitate continuous evolution through
+practical application. While benchmarks for this
+stage are relatively scarce, they possess a strong
+empirical character: Wu et al. (2024) and Ai et al.
+(2025) simulate environments for authentic deploy-
+ment to evaluate the capacity of LLM agents for the
+extraction and internalization of experience within
+cycles of input and feedback; conversely, Wei et al.
+(2025a) and Zheng et al. (2025) emphasize the ca-
+pacity for the transfer of experience, measuring
+levels of abstraction and generalization by assess-
+ing the transfer of acquired experience to a diverse
+range of other tasks.
+Stage          Dataset       Reference                 Size Description
+               LongBench     Bai et al. (2023)
+Storage Stage  LongBenchv2   Bai et al. (2024)         4.7k Evaluate faithful memory preservation and retrieval by performing information extraction and
+Benchmark      RULER         Hsieh et al. (2024)                 reasoning across multiple tasks with sequences up to 32k tokens.
+               MMNeedle      Wang et al. (2024a)
+               HotpotQA      Yang et al. (2018)        503 Answer complex multiple-choice questions through the processing of extremely long
+               MemoryBank    Zhong et al. (2023)                 sequences with lengths between 8k and 2M words for the purpose of evaluating the capacity of
+               BABILong      Kuratov et al. (2024)               memory and the precision of reasoning.
+               DialSim       Kim et al. (2024b)
+               LongMemEval   Maharana et al. (2024)  Scalable Evaluate the effectiveness of retrieval and synthesis within long contexts through tasks such as
+               BEAM          Tavakoli et al. (2025)              multi-needle extraction or multi-hop reasoning to identify true memory capacity.
+               MPR           Zhang et al. (2025k)
+               LOCCO         Jia et al. (2025)         280k Identify a target sub image within a massive collection of images through the analysis of textual
+               MADial-Bench  He et al. (2024b)                   descriptions and visual contents for the purpose of measuring the limits of multimodal retrieval.
+               HELMET        Yen et al. (2024)
+                                                       113k Answer questions by performing reasoning across multiple hops over information scattered in
+                                                                 diverse documents based on Wikipedia to provide accurate results and supporting facts.
+
+                                                       194 Answer questions by recalling pertinent information and summarizing user traits across a
+                                                                 history of interactions spanning ten days to evaluate the precision of retrieval and the
+                                                                 maintenance of user portraits for long-term dialogues.
+
+                                                     Scalable Answer questions by performing reasoning on facts scattered across extremely long documents
+                                                                 of natural language to test the limits of memory and retrieval for contexts with length up to one
+                                                                 million tokens.
+
+                                                       1.3k Evaluate the precision of retrieval for memory by answering spontaneous questions across
+                                                                 sessions of dialogue involving multiple parties with long durations.
+
+                                                       500 Answer questions through the extraction of information from histories of interactive chat with
+                                                                 multiple sessions for the purpose of evaluating the performance of retrieval and reasoning
+                                                                 across dependencies of long range.
+
+                                                       100 Evaluate the capacity of memory and the precision of retrieval by answering questions based
+                                                                 on coherent and topically diverse conversations with length up to ten million tokens.
+
+                                                       108k Answer complex questions by conducting reasoning across multiple hops of factual
+                                                                 information specific to a user within a framework of explicit or implicit memory for the
+                                                                 purpose of evaluating the precision of retrieval.
+
+                                                       1.6k Evaluate the persistence of memory and the retrieval of historical facts by analyzing
+                                                                 chronological conversations across extended periods of time for the purpose of measuring
+                                                                 information decay.
+
+                                                       160 Evaluate the effectiveness of retrieval and recognition for historical events across multiple turns
+                                                                 of interaction by simulating paradigms of passive and proactive recall for the purpose of
+                                                                 providing emotional support.
+
+                                                     Scalable Evaluate the effectiveness of models for long-context by performing information extraction and
+                                                                 reasoning across seven diverse categories for sequences with lengths up to 128k tokens to
+                                                                 provide a thorough assessment of memory capacity.
+
+               Table 2: Representative datasets for benchmarking LLM agent memory mechanisms.
+Stage             Dataset        Reference                  Size Description
+Reflection Stage  Minerva        Xia et al. (2025a)
+Benchmark         HaluMem        Chen et al. (2025b)      Scalable Analyze the proficiency of LLMs in utilizing and manipulating context memory through a
+                  MABench        Hu et al. (2025a)                    programmable framework of atomic and composite tasks for the purpose of pinpointing
+Experience Stage  PRM            Yuan et al. (2023)                   specific functional deficiencies and providing actionable insights.
+Benchmark         PersonMemv2    Jiang et al. (2025a)
+                  LoCoMo         Maharana et al. (2024)     3.5k Evaluate the fidelity of memory by quantifying the occurrence of fabrication and omission
+                  WebChoreArena  Miyai et al. (2025)                  during the stages of storage and retrieval across dialogues of multiple turns.
+                  MT-Mind2Web    Deng et al. (2024)
+                  StoryBench     Wan and Ma (2025)          2.1k Evaluate the competencies of accurate retrieval and learning at test time across sequences of
+                  PerLTQA        Du et al. (2024)                     incremental interactions with multiple turns.
+                  ImplexConv     Li et al. (2025c)
+                  Share          Kim et al. (2024a)         700 Evaluate the capability of personalized assistants to maintain a dynamic memory bank by
+                  Mem-PAL        Huang et al. (2025c)                 preserving evolving user knowledge and experiences across long term dialogues for the
+                  PrefEval       Zhao et al. (2025)                   purpose of generating tailored responses.
+                  LIDB           Tsaknakis et al. (2025)
+                  StreamBench    Wu et al. (2024)            1k Generate personalized responses through the extraction of implicit personas from interactions
+                  MemoryBench    Ai et al. (2025)                    with long context and thousands of preferences of users to evaluate the adaptation of agents.
+                  Evo-Memory     Wei et al. (2025a)
+                  LABench        Zheng et al. (2025)         50 Evaluate the reliability of memory by executing question answering and event summarization
+                                                                      across sequences of conversation with lengths of up to nine thousand tokens spanning
+                                                                      thirty-five sessions.
+
+                                                            451 Analyze the performance of memory for information retrieval and complex aggregation by
+                                                                      performing multiple steps of navigation and reasoning across hundreds of web pages.
+
+                                                            720 Evaluate the performance of conversational web navigation via multiturn instruction following
+                                                                      across sequential interactions with both users and environment for the purpose of managing
+                                                                      context dependency and limited memory space.
+
+                                                             80 Evaluate the capacity for reflection and sequential reasoning by navigating hierarchical
+                                                                      decision trees within interactive fiction games to trace back and revise earlier choices
+                                                                      independently across multiple turns.
+
+                                                            8.6k Answer personalized questions by retrieving and synthesizing semantic and episodic
+                                                                      information from a memory bank of thirty characters to evaluate the accuracy of retrieval for
+                                                                      memory.
+
+                                                            2.5k Evaluate implicit reasoning in personalized dialogues by retrieving and synthesizing subtle or
+                                                                      semantically distant information from history encompassing 100 sessions to test the efficiency
+                                                                      of hierarchical memory structures.
+
+                                                            3.2k Improve the quality of interactions across long durations by extracting persona data and
+                                                                      memories of shared history from scripts of movies to sustain a consistent relationship between
+                                                                      two individuals.
+
+                                                            100 Evaluate the capability of personalization for assistants oriented toward service by identifying
+                                                                      subjective traits and preferences of users from histories of dialogue and behavioral logs across
+                                                                      multiple sessions for the purpose of generating tailored responses.
+
+                                                             3k Quantify the robustness of proactive preference following by evaluating the ability of models to
+                                                                      infer and satisfy explicit or implicit user traits amidst long context distractions for sequences
+                                                                     with length up to 100k tokens.
+
+                                                            210 Discover the latent preferences of users and generate personalized responses through
+                                                                      interactions across multiple turns within a framework of three agents for the purpose of
+                                                                      evaluating the efficiency of elicitation and adaptation.
+
+                                                            9.7k Evaluate the capacity for continuous improvement and online learning via iterative feedback
+                                                                      processing across diverse task streams to measure the adaptation of agents after deployment.
+
+                                                            20k Evaluate the capacity for continual learning of Large Language Model systems by simulating
+                                                                      the accumulation of feedback from users across multiple domains to measure the effectiveness
+                                                                      of procedural memory.
+
+                                                            3.7k Evaluate the capacity for learning at test time and the evolution of memory by processing
+                                                                      continuous streams of tasks for the purpose of reuse of experience across diverse scenarios.
+
+                                                            1.4k Evaluate the lifelong learning ability and transfer of knowledge across sequences of
+                                                                      interdependent tasks in dynamic environments for the purpose of measuring the acquisition and
+                                                                      retention of skills.
+
+Table 2: Representative datasets for benchmarking LLM agent memory mechanisms (continued).
+

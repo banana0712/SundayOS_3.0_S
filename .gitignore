@@ -1,0 +1,45 @@
+# ============================================================
+# Sunday OS · 根目录 .gitignore
+# 目的：绝不把密钥、体积文件、他人版权内容提交到 Git
+# ============================================================
+
+# --- 密钥 / 环境变量（绝不上传）---
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+
+# --- 含明文密钥的临时笔记（务必排除；建议另去后台轮换 key）---
+readme.txt
+其他.txt
+
+# --- Python ---
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/
+*.db
+sunday.db
+
+# --- Node / Next.js (console) ---
+node_modules/
+.next/
+out/
+dist/
+*.tsbuildinfo
+npm-debug.log*
+
+# --- 他人版权的学术论文 PDF（公开仓库有版权风险，默认不传）---
+*.pdf
+
+# --- 操作系统 / 编辑器 ---
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# --- 本项目临时抽取文件 ---
+_docs_extract.txt
+_exp_extract.txt
