@@ -11,13 +11,27 @@ from .base import EngineCapabilities
 from .providers import AnthropicProvider, MockProvider, OpenAICompatibleProvider
 
 
+def env(name: str, default: str | None = None) -> str | None:
+    """Robust env lookup. Tolerates a stray trailing/leading space in the
+    variable NAME (a common dashboard mistake, e.g. "DEEPSEEK_API_KEY ") and
+    ignores empty values. Returns the first non-empty match, else default."""
+    v = os.environ.get(name)
+    if v and v.strip():
+        return v.strip()
+    # fall back: match by whitespace-stripped name, take first non-empty value
+    for k, val in os.environ.items():
+        if k.strip() == name and val and val.strip():
+            return val.strip()
+    return default
+
+
 def build_engines() -> list:
     """Instantiate every engine that has credentials configured."""
     engines: list = []
 
-    ds_key = os.getenv("DEEPSEEK_API_KEY")
+    ds_key = env("DEEPSEEK_API_KEY")
     if ds_key:
-        base = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1")
+        base = env("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1")
         engines.append(OpenAICompatibleProvider(
             id="deepseek-chat", api_key=ds_key, base_url=base, model="deepseek-chat",
             caps=EngineCapabilities(function_calling=True, max_context=64_000,
@@ -31,32 +45,32 @@ def build_engines() -> list:
             price_in=0.55, price_out=2.19,
         ))
 
-    qwen_key = os.getenv("QWEN_API_KEY")
+    qwen_key = env("QWEN_API_KEY")
     if qwen_key:
         engines.append(OpenAICompatibleProvider(
             id="qwen-plus", api_key=qwen_key,
-            base_url=os.getenv("QWEN_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1"),
+            base_url=env("QWEN_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1"),
             model="qwen-plus",
             caps=EngineCapabilities(function_calling=True, languages=("zh", "en")),
             price_in=0.4, price_out=1.2,
         ))
 
-    oai_key = os.getenv("OPENAI_API_KEY")
+    oai_key = env("OPENAI_API_KEY")
     if oai_key:
         engines.append(OpenAICompatibleProvider(
             id="gpt-4o", api_key=oai_key,
-            base_url=os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1"),
+            base_url=env("OPENAI_BASE_URL", "https://api.openai.com/v1"),
             model="gpt-4o",
             caps=EngineCapabilities(function_calling=True, strong_reasoning=True,
                                     max_context=128_000),
             price_in=2.5, price_out=10.0,
         ))
 
-    ant_key = os.getenv("ANTHROPIC_API_KEY")
+    ant_key = env("ANTHROPIC_API_KEY")
     if ant_key:
         engines.append(AnthropicProvider(
             id="claude-opus", api_key=ant_key, model="claude-opus-4-20250514",
-            base_url=os.getenv("ANTHROPIC_BASE_URL") or None,
+            base_url=env("ANTHROPIC_BASE_URL") or None,
             caps=EngineCapabilities(function_calling=True, strong_reasoning=True,
                                     max_context=200_000),
             price_in=15.0, price_out=75.0,
@@ -74,7 +88,7 @@ def build_engines() -> list:
 
     # Fallback: if nothing configured (and allowed), provide deterministic mocks
     # so memory/routing/dispatch still run offline.
-    if not engines and os.getenv("SUNDAY_ALLOW_MOCK", "true").lower() != "false":
+    if not engines and (env("SUNDAY_ALLOW_MOCK", "true") or "true").lower() != "false":
         engines = [
             MockProvider(id="mock-fast", strong_reasoning=False, price_in=0.1, price_out=0.1),
             MockProvider(id="mock-strong", strong_reasoning=True, price_in=5.0, price_out=15.0),
