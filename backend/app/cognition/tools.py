@@ -13,9 +13,11 @@ import asyncio
 import json
 import math
 import os
+import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Callable, Awaitable
+from urllib.parse import quote
 
 # ---------------------------------------------------------------------------
 # Tool definition (backward-compatible base)
@@ -179,11 +181,47 @@ async def _translate_handler(text: str, target_lang: str = "zh") -> str:
 
 
 async def _web_search_handler(query: str) -> str:
-    """Placeholder. Real implementation needs a search API key."""
-    return (
-        f"[web_search] Web search is not yet configured. "
-        f"Query: '{query}'. Try memory_search for local knowledge."
-    )
+    """Real web search via DuckDuckGo HTML endpoint. No API key needed."""
+    import httpx
+    try:
+        url = f"https://html.duckduckgo.com/html/?q={quote(query)}"
+        resp = httpx.get(url, headers={"User-Agent": "SundayOS/1.0"}, timeout=10.0,
+                         follow_redirects=True)
+        resp.raise_for_status()
+
+        # Extract snippets from DuckDuckGo's HTML results
+        snippets = re.findall(
+            r'<a[^>]*class="result__snippet"[^>]*>(.*?)</a>',
+            resp.text, re.DOTALL
+        )
+        if not snippets:
+            # Fallback: try to extract any snippet-like content
+            snippets = re.findall(
+                r'class="result__snippet"[^>]*>(.*?)</',
+                resp.text, re.DOTALL
+            )
+
+        if not snippets:
+            return f"[web_search] No results found for '{query}'."
+
+        # Clean HTML tags and entities, trim each snippet
+        clean = []
+        for s in snippets[:8]:
+            s = re.sub(r'<[^>]+>', '', s)          # strip HTML tags
+            s = s.replace('&amp;', '&').replace('&lt;', '<').replace('&gt;', '>')
+            s = s.replace('&quot;', '"').replace('&#x27;', "'")
+            s = s.replace('&nbsp;', ' ').strip()
+            if s:
+                clean.append(s)
+
+        if not clean:
+            return f"[web_search] No clear results for '{query}'."
+
+        return f"[web_search] Results for '{query}':\n" + "\n".join(
+            f"{i+1}. {snippet}" for i, snippet in enumerate(clean)
+        )
+    except Exception as e:
+        return f"[web_search] Search failed: {e}. Try a different query."
 
 
 # -- action skills -----------------------------------------------------------
@@ -233,11 +271,83 @@ async def _write_file_handler(path: str, content: str) -> str:
 # -- support skills ----------------------------------------------------------
 
 async def _weather_handler(city: str) -> str:
-    """Placeholder — real implementation needs a weather API key."""
-    return (
-        f"[weather] Weather API is not yet configured. "
-        f"Query for city: '{city}'. Try web_search for weather information."
-    )
+    """Real weather via wttr.in + Open-Meteo fallback. No API key needed."""
+    import httpx
+    city_clean = city.strip().replace(" ", "+")
+
+    # Try wttr.in first (plain text, super simple)
+    try:
+        url = f"https://wttr.in/{quote(city_clean)}?format=%C+%t+%w+%h&m"
+        resp = httpx.get(url, headers={"User-Agent": "curl/7.0"}, timeout=8.0)
+        if resp.status_code == 200 and resp.text.strip():
+            text = resp.text.strip()
+            # Parse wttr output: "Sunny +22°C 15km/h 65%"
+            return f"[weather] {city}: {text}"
+    except Exception:
+        pass  # fall through to Open-Meteo
+
+    # Fallback: Open-Meteo geocoding + forecast (free, no key)
+    try:
+        # Step 1: geocode city name to coordinates
+        geo_url = f"https://geocoding-api.open-meteo.com/v1/search?name={quote(city_clean)}&count=1&language=zh"
+        geo_resp = httpx.get(geo_url, timeout=8.0)
+        if geo_resp.status_code == 200:
+            geo_data = geo_resp.json()
+            results = geo_data.get("results", [])
+            if results:
+                r = results[0]
+                lat, lon = r["latitude"], r["longitude"]
+                name = r.get("name", city)
+                country = r.get("country", "")
+
+                # Step 2: get current weather
+                wx_url = (
+                    f"https://api.open-meteo.com/v1/forecast?"
+                    f"latitude={lat}&longitude={lon}"
+                    f"&current=temperature_2m,relative_humidity_2m,"
+                    f"wind_speed_10m,weather_code&timezone=auto"
+                )
+                wx_resp = httpx.get(wx_url, timeout=8.0)
+                if wx_resp.status_code == 200:
+                    wx = wx_resp.json()
+                    cur = wx.get("current", {})
+                    temp = cur.get("temperature_2m", "?")
+                    hum = cur.get("relative_humidity_2m", "?")
+                    wind = cur.get("wind_speed_10m", "?")
+                    code = cur.get("weather_code", 0)
+
+                    # WMO weather code → description
+                    wx_desc = _weather_code_desc(code)
+
+                    return (
+                        f"[weather] {name}, {country}: {wx_desc}, "
+                        f"温度 {temp}°C, 湿度 {hum}%, 风速 {wind} km/h"
+                    )
+
+        return f"[weather] Could not find weather data for '{city}'. Check the city name."
+    except Exception as e:
+        return f"[weather] Weather lookup failed for '{city}': {e}"
+
+
+def _weather_code_desc(code: int) -> str:
+    """WMO weather code to Chinese description."""
+    if code == 0:
+        return "晴"
+    if code <= 3:
+        return "多云"
+    if code <= 49:
+        return "雾/霾"
+    if code <= 59:
+        return "小雨"
+    if code <= 69:
+        return "中雨"
+    if code <= 79:
+        return "雪"
+    if code <= 84:
+        return "大雨"
+    if code <= 99:
+        return "雷暴"
+    return "未知"
 
 
 async def _echo_handler(text: str) -> str:
@@ -267,7 +377,7 @@ SKILLS.register(Skill(
     examples=["现在几点", "今天是星期几"],
 ))
 SKILLS.register(Skill(
-    name="web_search", description="搜索互联网获取实时信息（新闻、天气、百科）。当前为占位实现。",
+    name="web_search", description="通过 DuckDuckGo 搜索互联网获取实时信息（新闻、百科、事实）。免费，无需 API Key。",
     params={"query": "string"}, category="data", risk="medium",
     handler=_web_search_handler,
     examples=["搜索 Python 3.14 新特性", "查一下上海今天天气"],
@@ -291,7 +401,7 @@ SKILLS.register(Skill(
     examples=["把这段英文翻译成中文", "翻译成日语"],
 ))
 SKILLS.register(Skill(
-    name="weather", description="查询指定城市的天气信息（当前为占位实现，待接入天气 API）。",
+    name="weather", description="通过 wttr.in / Open-Meteo 查询指定城市的实时天气（温度、湿度、风速）。免费，无需 API Key。",
     params={"city": "string"}, category="data", risk="low",
     handler=_weather_handler,
     examples=["北京今天天气", "东京天气怎么样"],

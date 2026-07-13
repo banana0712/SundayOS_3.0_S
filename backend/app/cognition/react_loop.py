@@ -85,11 +85,11 @@ _SKILL_DOCS: dict[str, str] = {
         "  **注意**：无参数，直接调用 `get_time[]`。"
     ),
     "web_search": (
-        "`web_search[query]` — 搜索互联网获取实时信息。\n"
+        "`web_search[query]` — 通过 DuckDuckGo 搜索互联网获取实时信息。\n"
         "  **何时使用**：用户问的是实时信息（天气、新闻、股价）、最新文档、当前事件\n"
         "  **不要使用**：用户问的是个人历史或偏好 → 用 memory_search；纯计算 → 用 calculator\n"
         "  **示例**：`web_search[上海今天天气预报]`\n"
-        "  **注意**：当前为占位实现，可能返回 'not yet configured'。失败时尝试从记忆推断。"
+        "  **注意**：免费，无需 API Key。返回搜索结果摘要（1-8 条）。失败时尝试从记忆推断。"
     ),
     "read_file": (
         "`read_file[path]` — 读取服务器上的文本文件。\n"
@@ -113,12 +113,13 @@ _SKILL_DOCS: dict[str, str] = {
         "  **注意**：翻译由推理引擎提供，translate 工具返回原文供引擎翻译。target_lang 用简写：zh(中文) en(英语) ja(日语) ko(韩语)。"
     ),
     "weather": (
-        "`weather[city]` — 查询指定城市的天气。\n"
+        "`weather[city]` — 通过 wttr.in / Open-Meteo 查询城市实时天气。\n"
         "  **何时使用**：用户问「天气」「多少度」「会下雨吗」\n"
         "  **不要使用**：用户问的是气候或历史天气 → 用 web_search\n"
         "  **示例**：`weather[北京]`、`weather[Tokyo]`\n"
-        "  **注意**：当前为占位实现。失败时尝试 web_search 获取天气信息。"
+        "  **注意**：免费，无需 API Key。返回温度/湿度/风速/天气描述。支持中英文城市名。"
     ),
+
 }
 
 # ---------------------------------------------------------------------------
