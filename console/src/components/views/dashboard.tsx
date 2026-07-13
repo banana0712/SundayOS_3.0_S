@@ -23,6 +23,7 @@ import { Card, Donut, Radar, Badge, Sparkline } from "@/components/ui/primitives
 import { useDrift } from "@/store/ui";
 import { useI18n } from "@/i18n";
 import { cn } from "@/lib/cn";
+import { apiFetch } from "@/lib/api-key";
 
 import type { Variants } from "framer-motion";
 
@@ -43,7 +44,7 @@ export function DashboardView() {
     let alive = true;
     const fetchStats = async () => {
       try {
-        const r = await fetch("/api/stats/dashboard");
+        const r = await apiFetch("/api/stats/dashboard");
         if (r.ok && alive) setStats(await r.json());
       } catch { /* backend may not have this endpoint yet */ }
     };

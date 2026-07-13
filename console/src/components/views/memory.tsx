@@ -9,6 +9,7 @@ import {
 import { Card, Badge } from "@/components/ui/primitives";
 import { useI18n } from "@/i18n";
 import { cn } from "@/lib/cn";
+import { apiFetch } from "@/lib/api-key";
 
 type MemoryHit = {
   id: string;
@@ -59,14 +60,14 @@ export function MemoryView() {
 
   const fetchStats = useCallback(async () => {
     try {
-      const r = await fetch("/api/memory/stats");
+      const r = await apiFetch("/api/memory/stats");
       if (r.ok) setStats(await r.json());
     } catch { /* ignore */ }
   }, []);
 
   const fetchReflections = useCallback(async () => {
     try {
-      const r = await fetch("/api/memory/reflections?limit=10");
+      const r = await apiFetch("/api/memory/reflections?limit=10");
       if (r.ok) {
         const d = await r.json();
         setReflections(d.reflections || []);
@@ -77,7 +78,7 @@ export function MemoryView() {
   const doSearch = useCallback(async (q: string) => {
     setSearching(true);
     try {
-      const r = await fetch("/api/memory/search", {
+      const r = await apiFetch("/api/memory/search", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({query: q || "*", k: 20 }),
@@ -98,7 +99,7 @@ export function MemoryView() {
 
   const doReflect = async () => {
     try {
-      await fetch("/api/memory/reflect", {
+      await apiFetch("/api/memory/reflect", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({force: true }),
@@ -110,7 +111,7 @@ export function MemoryView() {
 
   const doConsolidate = async () => {
     try {
-      await fetch("/api/memory/consolidate", { method: "POST" });
+      await apiFetch("/api/memory/consolidate", { method: "POST" });
       fetchStats();
     } catch { /* ignore */ }
   };

@@ -1,7 +1,9 @@
 "use client";
 
+import { useEffect } from "react";
 import { UIProvider, useUI } from "@/store/ui";
 import { I18nProvider } from "@/i18n";
+import { ensureApiKey } from "@/lib/api-key";
 import { Sidebar } from "./sidebar";
 import { TopBar } from "./topbar";
 import { Inspector } from "./inspector";
@@ -42,6 +44,14 @@ function ViewRouter() {
   );
 }
 
+function KeyPrompt() {
+  useEffect(() => {
+    const timer = setTimeout(() => ensureApiKey(), 500);
+    return () => clearTimeout(timer);
+  }, []);
+  return null;
+}
+
 export function AppShell({ children }: { children: React.ReactNode }) {
   // children (route content) is unused for the SPA-style view switch,
   // kept so the root layout composes normally.
@@ -49,6 +59,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <I18nProvider>
     <UIProvider>
+      <KeyPrompt />
       <div className="relative z-10 flex h-screen w-screen overflow-hidden">
         <Sidebar />
         <div className="flex min-w-0 flex-1 flex-col">

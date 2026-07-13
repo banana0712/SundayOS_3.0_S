@@ -10,7 +10,9 @@ import os
 from dotenv import load_dotenv
 from fastapi import FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, StreamingResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
+from pathlib import Path
 from pydantic import BaseModel
 
 from .webchat import CHAT_HTML
@@ -206,6 +208,30 @@ class ChatRequest(BaseModel):
     role_hint: str | None = None
     voice_input: bool = False
     conversation_id: str | None = None
+
+
+# --- static console files (built from Next.js with output:export) ----------
+_CONSOLE_DIR = Path(__file__).parent.parent / "console_static"
+if _CONSOLE_DIR.exists():
+    # Mount static assets (JS, CSS, images) from the build output
+    app.mount("/console/_next", StaticFiles(directory=str(
+        _CONSOLE_DIR / "_next"
+    )), name="console_assets")
+
+    @app.get("/console/{rest_of_path:path}")
+    async def console_spa(rest_of_path: str) -> FileResponse:
+        """Serve the Console SPA. All paths return index.html."""
+        target = _CONSOLE_DIR / rest_of_path
+        # If the request matches a real file (_next chunks, index.txt, etc.), serve it
+        if target.exists() and target.is_file():
+            return FileResponse(str(target))
+        # Otherwise serve index.html (SPA routing)
+        return FileResponse(str(_CONSOLE_DIR / "index.html"))
+
+    @app.get("/console")
+    async def console_root() -> FileResponse:
+        """Console landing page."""
+        return FileResponse(str(_CONSOLE_DIR / "index.html"))
 
 
 @app.get("/", response_class=HTMLResponse)

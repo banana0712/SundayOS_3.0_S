@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Send, Sparkles, Plus, Circle, Cpu, MessageSquare, Trash2 } from "lucide-react";
 import { useI18n } from "@/i18n";
 import { cn } from "@/lib/cn";
+import { apiFetch, ensureApiKey } from "@/lib/api-key";
 
 type Msg = {
   id: number;
@@ -38,7 +39,7 @@ export function ChatView() {
     let alive = true;
     const ping = async () => {
       try {
-        const r = await fetch("/health");
+        const r = await apiFetch("/health");
         const d = await r.json();
         if (alive) setOnline(d.engines?.length > 0);
       } catch {
@@ -59,7 +60,7 @@ export function ChatView() {
 
   const fetchConvs = useCallback(async () => {
     try {
-      const r = await fetch("/api/conversations");
+      const r = await apiFetch("/api/conversations");
       if (r.ok) {
         const d = await r.json();
         setConvs(d.conversations || []);
@@ -72,7 +73,7 @@ export function ChatView() {
   const selectConv = useCallback(async (id: string) => {
     setConvId(id);
     try {
-      const r = await fetch(`/api/conversations/${id}`);
+      const r = await apiFetch(`/api/conversations/${id}`);
       if (r.ok) {
         const d = await r.json();
         const loaded: Msg[] = (d.messages || []).map((m: Record<string, unknown>, i: number) => ({
@@ -95,7 +96,7 @@ export function ChatView() {
   const deleteConv = useCallback(async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     try {
-      await fetch(`/api/conversations/${id}`, { method: "DELETE" });
+      await apiFetch(`/api/conversations/${id}`, { method: "DELETE" });
       if (convId === id) { setConvId(null); setMsgs([]); }
       fetchConvs();
     } catch { /* ignore */ }
@@ -115,7 +116,7 @@ export function ChatView() {
     try {
       const body: Record<string, unknown> = { message: text };
       if (convId) body.conversation_id = convId;
-      const r = await fetch("/api/chat/stream", {
+      const r = await apiFetch("/api/chat/stream", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
