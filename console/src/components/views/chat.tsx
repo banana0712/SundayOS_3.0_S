@@ -136,12 +136,30 @@ export function ChatView() {
         if (!reader) throw new Error("no reader");
         const decoder = new TextDecoder();
         const msgId = idRef.current++;
-        // Placeholder message that gets updated
         setMsgs((m) => [...m, { id: msgId, role: "assistant", text: "" }]);
         let buf = "";
-        let streamedText = "";
-        const updateMsg = (partial: Partial<Msg>) => {
-          setMsgs((m) => m.map(msg => msg.id === msgId ? { ...msg, ...partial } : msg));
+        const textAcc = { current: "" };  // ref avoids closure staleness
+        let lastFlush = 0;
+        const throttledFlush = (text: string) => {
+          const now = Date.now();
+          if (now - lastFlush < 120) return; // throttle to ~8 updates/sec
+          lastFlush = now;
+          setMsgs((m) => {
+            const idx = m.findIndex(msg => msg.id === msgId);
+            if (idx < 0) return m;
+            const copy = [...m];
+            copy[idx] = { ...copy[idx], text };
+            return copy;
+          });
+        };
+        const finalFlush = (partial: Partial<Msg>) => {
+          setMsgs((m) => {
+            const idx = m.findIndex(msg => msg.id === msgId);
+            if (idx < 0) return m;
+            const copy = [...m];
+            copy[idx] = { ...copy[idx], ...partial };
+            return copy;
+          });
         };
         while (true) {
           const { value, done } = await reader.read();
@@ -155,28 +173,26 @@ export function ChatView() {
               const d = JSON.parse(line.slice(6));
               if (d.type === "done") {
                 if (d.conversation_id && !convId) setConvId(d.conversation_id);
-                updateMsg({ engine: d.engine, system: d.system });
+                finalFlush({ text: textAcc.current, engine: d.engine, system: d.system });
                 fetchConvs();
               } else if (d.type === "text") {
-                streamedText += d.content;
-                updateMsg({ text: streamedText });
+                textAcc.current += d.content;
+                throttledFlush(textAcc.current);
               } else if (d.type === "finish") {
-                streamedText = d.content || streamedText;
-                updateMsg({ text: streamedText });
+                textAcc.current = d.content || textAcc.current;
+                throttledFlush(textAcc.current);
               } else if (d.type === "thought" || d.type === "action" || d.type === "observation") {
-                // Append step marker to text
-                const marker = d.type === "thought" ? "\n💭 "
-                  : d.type === "action" ? "\n🔧 " : "\n📋 ";
-                streamedText += marker + (d.content || "").substring(0, 80);
-                updateMsg({ text: streamedText });
+                const marker = d.type === "thought" ? "\n💭 " : d.type === "action" ? "\n🔧 " : "\n📋 ";
+                textAcc.current += marker + (d.content || "").substring(0, 80);
+                throttledFlush(textAcc.current);
               } else if (d.type === "error") {
-                streamedText += "\n⚠ " + d.content;
-                updateMsg({ text: streamedText });
+                textAcc.current += "\n⚠ " + d.content;
+                throttledFlush(textAcc.current);
               }
             } catch { /* skip bad JSON */ }
           }
         }
-        if (!streamedText) updateMsg({ text: t("chat.err.generic") });
+        if (!textAcc.current) finalFlush({ text: t("chat.err.generic") });
       } else {
         // Fallback: regular JSON response
         const d = await r.json();

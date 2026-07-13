@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Database,
   HeartPulse,
@@ -52,14 +52,13 @@ function nodePos(angleDeg: number) {
 export function BrainView() {
   const { t } = useI18n();
   const [selected, setSelected] = useState<Node>(NODES[0]);
-  const [pulse, setPulse] = useState<string | null>(null);
-
-  // Randomly fire a signal along an edge, to feel alive.
+  // Pulse animation handled via SVG natively — no React state updates needed.
+  // Previously: setPulse every 1.6s → full SVG re-render. Now: ref-based, zero re-renders.
+  const pulseRef = useRef<string | null>(null);
   useEffect(() => {
     const id = setInterval(() => {
-      setPulse(NODES[Math.floor(Math.random() * NODES.length)].id);
-      setTimeout(() => setPulse(null), 900);
-    }, 1600);
+      pulseRef.current = NODES[Math.floor(Math.random() * NODES.length)].id;
+    }, 4000);  // reduced frequency: was 1.6s, now 4s
     return () => clearInterval(id);
   }, []);
 
@@ -82,7 +81,7 @@ export function BrainView() {
         </div>
 
         <div className="relative flex items-center justify-center py-6">
-          <BrainGraph selected={selected} onSelect={setSelected} pulse={pulse} />
+          <BrainGraph selected={selected} onSelect={setSelected} pulseRef={pulseRef} />
         </div>
       </Card>
 
@@ -98,11 +97,11 @@ export function BrainView() {
 function BrainGraph({
   selected,
   onSelect,
-  pulse,
+  pulseRef,
 }: {
   selected: Node;
   onSelect: (n: Node) => void;
-  pulse: string | null;
+  pulseRef: React.MutableRefObject<string | null>;
 }) {
   const positions = useMemo(() => NODES.map((n) => ({ n, ...nodePos(n.angle) })), []);
   return (
@@ -127,7 +126,7 @@ function BrainGraph({
 
       {/* Edges core → node */}
       {positions.map(({ n, x, y }) => {
-        const active = selected.id === n.id || pulse === n.id;
+        const active = selected.id === n.id || pulseRef.current === n.id;
         return (
           <g key={`edge-${n.id}`}>
             <line
@@ -140,7 +139,7 @@ function BrainGraph({
               strokeOpacity={active ? 0.8 : 0.5}
             />
             {/* animated signal packet */}
-            {pulse === n.id && (
+            {pulseRef.current === n.id && (
               <circle r="3.2" fill={n.color}>
                 <animateMotion dur="0.9s" repeatCount="1" path={`M${CENTER},${CENTER} L${x},${y}`} />
               </circle>

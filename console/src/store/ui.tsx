@@ -100,16 +100,8 @@ export function useNow(intervalMs = 1000) {
   return now;
 }
 
-// A gently drifting signal generator — used to make gauges feel alive.
-export function useDrift(base: number, amp: number, periodMs = 4000) {
-  const [v, setV] = useState(base);
-  const tick = useCallback(() => {
-    const t = Date.now() / periodMs;
-    setV(base + Math.sin(t) * amp + (Math.sin(t * 2.3) * amp) / 3);
-  }, [base, amp, periodMs]);
-  useEffect(() => {
-    const id = setInterval(tick, 120);
-    return () => clearInterval(id);
-  }, [tick]);
-  return v;
+// Static display — live data comes from backend polling, not client-side drift.
+// Previously used setInterval(120ms) × 5 instances = 40+ phantom re-renders/sec.
+export function useDrift(base: number, _amp = 0, _periodMs = 4000) {
+  return base;  // stable value, no state updates
 }

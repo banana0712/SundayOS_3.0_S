@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { motion } from "framer-motion";
 import {
   MessageSquare,
@@ -54,7 +54,7 @@ export function DashboardView() {
   }, []);
 
   const live = stats !== null;
-  const metrics = buildMetrics(stats);
+  const metrics = useMemo(() => buildMetrics(stats), [stats]);
 
   return (
     <div className="mx-auto max-w-[1400px] px-6 py-6">

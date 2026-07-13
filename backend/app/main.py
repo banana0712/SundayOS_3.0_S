@@ -115,17 +115,23 @@ def _auth(x_api_key: str | None) -> None:
         raise HTTPException(status_code=401, detail="invalid or missing X-API-Key")
 
 
+# FastAPI will call this once per request, then inject the result.
+# Caches the SHA256 so _resolve_user is O(1) after first call per request.
+_USER_CACHE: dict[str, str] = {}
+
 def _resolve_user(x_api_key: str | None) -> str:
-    """Derive a stable user_id from the API Key.
-
-    Same Key → same user_id across all devices (iPhone/PC/tablet).
-    Different Key → completely isolated identity.
-
-    Uses a truncated hash — stable, consistent, no personal info.
-    """
+    """Derive a stable user_id from the API Key. Cached per request."""
     import hashlib
-    raw = (x_api_key or "anonymous").encode("utf-8")
-    return "user_" + hashlib.sha256(raw).hexdigest()[:16]
+    key = x_api_key or "anonymous"
+    cached = _USER_CACHE.get(key)
+    if cached:
+        return cached
+    result = "user_" + hashlib.sha256(key.encode("utf-8")).hexdigest()[:16]
+    _USER_CACHE[key] = result
+    # Keep cache bounded
+    if len(_USER_CACHE) > 1000:
+        _USER_CACHE.clear()
+    return result
 
 
 # --- iPhone Shortcuts endpoints ----------------------------------------------
