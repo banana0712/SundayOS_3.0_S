@@ -9,6 +9,7 @@ import os
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, Header, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from .cognition.belief import BeliefState
@@ -23,6 +24,18 @@ from .memory.store import MemoryStore
 load_dotenv()
 
 app = FastAPI(title="SundayOS 3.0", version="3.0.0-alpha")
+
+# CORS — the API is auth-protected via X-API-Key, so we allow any origin to
+# call it (iPhone Shortcuts, the web console on another domain, curl, etc.).
+# Tighten `allow_origins` to your own domains if you prefer.
+_origins = os.getenv("SUNDAY_CORS_ORIGINS", "*")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"] if _origins == "*" else [o.strip() for o in _origins.split(",")],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # --- singletons (start-simple: in-process; swap for DI/DB in production) ----
 ENGINES = build_engines()
