@@ -70,6 +70,29 @@ async def health() -> dict:
     }
 
 
+@app.get("/api/debug/env")
+async def debug_env(x_api_key: str | None = Header(default=None)) -> dict:
+    """Diagnostic: report WHICH engine-related env vars the running process can
+    see — names + presence + value length only. NEVER returns the secret value.
+    Auth-gated. Remove or ignore once diagnosis is done."""
+    _auth(x_api_key)
+    watched = [
+        "SUNDAY_API_KEY", "SUNDAY_ALLOW_MOCK", "DEEPSEEK_API_KEY",
+        "DEEPSEEK_BASE_URL", "QWEN_API_KEY", "OPENAI_API_KEY",
+        "ANTHROPIC_API_KEY",
+    ]
+    seen = {}
+    for name in watched:
+        v = os.getenv(name)
+        seen[name] = {"present": v is not None, "length": len(v) if v else 0}
+    # also list any env var NAME that looks key-ish, to catch typos (names only)
+    keyish = sorted(
+        n for n in os.environ
+        if any(tok in n.upper() for tok in ("KEY", "DEEPSEEK", "SUNDAY", "QWEN", "MOCK", "ANTHROPIC"))
+    )
+    return {"watched": seen, "keyish_names_present": keyish, "engines_built": [e.id for e in ENGINES]}
+
+
 @app.get("/api/engines")
 async def engines() -> dict:
     return {
