@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Send, Sparkles, Plus, Circle, Cpu } from "lucide-react";
+import { Send, Sparkles, Plus, Circle, Cpu, MessageSquare, Trash2 } from "lucide-react";
 import { useI18n } from "@/i18n";
 import { cn } from "@/lib/cn";
 
@@ -15,6 +15,14 @@ type Msg = {
   mock?: boolean;
 };
 
+type ConvInfo = {
+  id: string;
+  title: string;
+  message_count: number;
+  created_at: string;
+  updated_at: string;
+};
+
 export function ChatView() {
   const { t } = useI18n();
   const [msgs, setMsgs] = useState<Msg[]>([]);
@@ -25,14 +33,14 @@ export function ChatView() {
   const endRef = useRef<HTMLDivElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
 
-  // connection indicator
+  // connection indicator (uses /health, not /api/chat)
   useEffect(() => {
     let alive = true;
     const ping = async () => {
       try {
-        const r = await fetch("/api/chat", { method: "GET" });
+        const r = await fetch("/health");
         const d = await r.json();
-        if (alive) setOnline(Boolean(d.ok));
+        if (alive) setOnline(d.engines?.length > 0);
       } catch {
         if (alive) setOnline(false);
       }
@@ -44,6 +52,54 @@ export function ChatView() {
       clearInterval(id);
     };
   }, []);
+
+  // ---- conversation state ----
+  const [convs, setConvs] = useState<ConvInfo[]>([]);
+  const [convId, setConvId] = useState<string | null>(null);
+
+  const fetchConvs = useCallback(async () => {
+    try {
+      const r = await fetch("/api/conversations?user_id=me");
+      if (r.ok) {
+        const d = await r.json();
+        setConvs(d.conversations || []);
+      }
+    } catch { /* backend may not have this endpoint yet */ }
+  }, []);
+
+  useEffect(() => { fetchConvs(); }, [fetchConvs]);
+
+  const selectConv = useCallback(async (id: string) => {
+    setConvId(id);
+    try {
+      const r = await fetch(`/api/conversations/${id}`);
+      if (r.ok) {
+        const d = await r.json();
+        const loaded: Msg[] = (d.messages || []).map((m: Record<string, unknown>, i: number) => ({
+          id: i,
+          role: m.role as "user" | "assistant",
+          text: m.content as string,
+          engine: (m.engine as string) || undefined,
+          system: (m.system as string) || undefined,
+        }));
+        setMsgs(loaded);
+      }
+    } catch { /* ignore */ }
+  }, []);
+
+  const newConv = useCallback(() => {
+    setConvId(null);
+    setMsgs([]);
+  }, []);
+
+  const deleteConv = useCallback(async (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      await fetch(`/api/conversations/${id}`, { method: "DELETE" });
+      if (convId === id) { setConvId(null); setMsgs([]); }
+      fetchConvs();
+    } catch { /* ignore */ }
+  }, [convId, fetchConvs]);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -57,10 +113,12 @@ export function ChatView() {
     setInput("");
     setSending(true);
     try {
+      const body: Record<string, unknown> = { message: text, user_id: "me" };
+      if (convId) body.conversation_id = convId;
       const r = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: text, user_id: "me" }),
+        body: JSON.stringify(body),
       });
       if (r.status === 502) {
         setMsgs((m) => [...m, { id: idRef.current++, role: "assistant", text: t("chat.err.offline") }]);
@@ -69,6 +127,13 @@ export function ChatView() {
       }
       const d = await r.json();
       const reply: string = d.reply ?? t("chat.err.generic");
+      // remember conversation id for subsequent messages
+      if (d.conversation_id && !convId) {
+        setConvId(d.conversation_id);
+        fetchConvs();  // refresh list to show the new conversation
+      } else if (convId) {
+        fetchConvs();  // update message count in sidebar
+      }
       const isMock = typeof d.engine === "string" && d.engine.startsWith("mock");
       setMsgs((m) => [
         ...m,
@@ -90,7 +155,56 @@ export function ChatView() {
   };
 
   return (
-    <div className="mx-auto flex h-full max-w-[860px] flex-col px-4">
+    <div className="flex h-full">
+      {/* Conversation sidebar */}
+      <aside className="flex w-[260px] shrink-0 flex-col border-r border-border bg-[var(--surface)]/40 backdrop-blur-[var(--glass-blur)]">
+        <div className="flex items-center gap-2 border-b border-border px-3 py-3">
+          <button
+            onClick={newConv}
+            className="flex flex-1 items-center justify-center gap-1.5 rounded-[10px] border border-border2 bg-[var(--surface)] py-2 text-[13px] text-primary transition-colors hover:border-accent hover:text-accent"
+          >
+            <Plus className="h-4 w-4" />
+            {t("chat.newchat")}
+          </button>
+        </div>
+        <div className="flex-1 overflow-y-auto px-2 py-1">
+          {convs.length === 0 && (
+            <div className="px-3 py-8 text-center text-[12px] text-tertiary">
+              {t("chat.empty.title")}
+            </div>
+          )}
+          {convs.map((c) => (
+            <button
+              key={c.id}
+              onClick={() => selectConv(c.id)}
+              className={cn(
+                "group flex w-full items-center gap-2 rounded-[10px] px-3 py-2.5 text-left transition-colors",
+                c.id === convId
+                  ? "bg-[var(--surface-2)] border border-border"
+                  : "hover:bg-[var(--surface-2)]"
+              )}
+            >
+              <MessageSquare className={cn(
+                "h-4 w-4 shrink-0",
+                c.id === convId ? "text-accent" : "text-tertiary"
+              )} />
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-[13px] text-primary">{c.title}</div>
+                <div className="text-[10px] text-tertiary">{c.message_count} msg</div>
+              </div>
+              <button
+                onClick={(e) => deleteConv(c.id, e)}
+                className="ml-auto h-6 w-6 shrink-0 rounded-md text-tertiary opacity-0 transition-opacity hover:bg-[color:var(--danger)]/10 hover:text-danger group-hover:opacity-100"
+              >
+                <Trash2 className="h-3.5 w-3.5 mx-auto" />
+              </button>
+            </button>
+          ))}
+        </div>
+      </aside>
+
+      {/* Main chat area */}
+      <div className="flex min-w-0 flex-1 flex-col px-4">
       {/* header */}
       <div className="flex items-center gap-3 py-4">
         <div className="relative flex h-9 w-9 items-center justify-center">
@@ -114,7 +228,7 @@ export function ChatView() {
             {online === false ? t("chat.backend.down") : t("chat.backend.up")}
           </span>
           <button
-            onClick={() => setMsgs([])}
+            onClick={newConv}
             className="flex items-center gap-1.5 rounded-full border border-border px-3 py-1.5 text-[12px] text-secondary transition-colors hover:border-border-strong hover:text-primary"
           >
             <Plus className="h-3.5 w-3.5" />
@@ -223,6 +337,7 @@ export function ChatView() {
             <Send className="h-4 w-4" />
           </button>
         </div>
+      </div>
       </div>
     </div>
   );

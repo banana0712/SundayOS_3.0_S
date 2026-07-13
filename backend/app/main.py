@@ -21,10 +21,11 @@ from .engines.base import Complexity, EngineMessage
 from .engines.registry import build_engines
 from .engines.router import CognitiveRequest, CognitiveRouter
 from .guardrails.pipeline import GuardrailTripwire, check_input, redact_pii
+from .conversation.store import ConversationStore
 from .memory.schema import MemoryNode, MemoryType
 from .memory.store import MemoryStore
 
-load_dotenv()
+load_dotenv(override=True)
 
 app = FastAPI(title="SundayOS 3.0", version="3.0.0-alpha")
 
@@ -44,6 +45,7 @@ app.add_middleware(
 ENGINES = build_engines()
 ROUTER = CognitiveRouter(ENGINES)
 MEMORY = MemoryStore()
+CONV = ConversationStore()
 API_KEY = os.getenv("SUNDAY_API_KEY", "change-me-in-production")
 
 PERSONA = (
@@ -62,6 +64,7 @@ class ChatRequest(BaseModel):
     user_id: str
     role_hint: str | None = None
     voice_input: bool = False
+    conversation_id: str | None = None
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -76,6 +79,7 @@ async def health() -> dict:
         "status": "ok",
         "engines": [e.id for e in ENGINES],
         "memory_nodes": len(MEMORY.all()),
+        "conversation_count": CONV.count(),
     }
 
 
@@ -153,10 +157,32 @@ async def chat(req: ChatRequest, x_api_key: str | None = Header(default=None)) -
     ))
 
     if result.response is None:
-        # graceful degradation — never "crash the mind"
-        reply = "我现在思考有点慢，稍等一下再问我好吗？"
+        # graceful degradation — surface the real error, don't hide it
+        errors = result.trace.errors
+        if errors:
+            first_err = next(iter(errors.values()))
+            reply = f"[引擎调用失败] {first_err}"
+        else:
+            reply = "所有引擎当前不可用，请稍后重试。"
     else:
         reply, _ = redact_pii(result.response.text)  # L3 output PII filter
+
+    # --- conversation session: auto-create or append ---
+    conv_id = req.conversation_id
+    if not conv_id or not CONV.get(conv_id):
+        conv = CONV.create(req.user_id)
+        conv_id = conv.id
+    CONV.add_message(conv_id, "user", req.message)
+    CONV.add_message(conv_id, "assistant", reply,
+                     engine=result.trace.chosen,
+                     system="reasoner" if use_reasoner else "talker",
+                     trace={
+                         "engine": result.trace.chosen,
+                         "system": "reasoner" if use_reasoner else "talker",
+                         "complexity": result.trace.complexity,
+                         "errors": result.trace.errors,
+                         "latency_ms": result.trace.latency_ms,
+                     })
 
     # async-ish memory write (inline here for simplicity)
     MEMORY.add(MemoryNode(
@@ -169,6 +195,7 @@ async def chat(req: ChatRequest, x_api_key: str | None = Header(default=None)) -
 
     return {
         "reply": reply,
+        "conversation_id": conv_id,
         "engine": result.trace.chosen,
         "system": "reasoner" if use_reasoner else "talker",
         "complexity": result.trace.complexity,
@@ -184,6 +211,86 @@ async def chat(req: ChatRequest, x_api_key: str | None = Header(default=None)) -
             "errors": result.trace.errors,
         },
     }
+
+
+# --- conversation endpoints ---------------------------------------------------
+
+class ConversationCreateRequest(BaseModel):
+    user_id: str
+    title: str = "新对话"
+
+
+@app.post("/api/conversations")
+async def conversation_create(req: ConversationCreateRequest,
+                              x_api_key: str | None = Header(default=None)) -> dict:
+    _auth(x_api_key)
+    conv = CONV.create(req.user_id, req.title)
+    return {
+        "id": conv.id,
+        "title": conv.title,
+        "user_id": conv.user_id,
+        "message_count": len(conv.messages),
+        "created_at": conv.created_at.isoformat(),
+        "updated_at": conv.updated_at.isoformat(),
+    }
+
+
+@app.get("/api/conversations")
+async def conversation_list(user_id: str,
+                            x_api_key: str | None = Header(default=None)) -> dict:
+    _auth(x_api_key)
+    convs = CONV.list(user_id)
+    return {
+        "conversations": [
+            {
+                "id": c.id,
+                "title": c.title,
+                "message_count": len(c.messages),
+                "created_at": c.created_at.isoformat(),
+                "updated_at": c.updated_at.isoformat(),
+            }
+            for c in convs
+        ]
+    }
+
+
+@app.get("/api/conversations/{conv_id}")
+async def conversation_get(conv_id: str,
+                           x_api_key: str | None = Header(default=None)) -> dict:
+    _auth(x_api_key)
+    conv = CONV.get(conv_id)
+    if conv is None:
+        raise HTTPException(status_code=404, detail="conversation not found")
+    return {
+        "id": conv.id,
+        "title": conv.title,
+        "user_id": conv.user_id,
+        "messages": conv.messages,
+        "message_count": len(conv.messages),
+        "created_at": conv.created_at.isoformat(),
+        "updated_at": conv.updated_at.isoformat(),
+    }
+
+
+@app.delete("/api/conversations/{conv_id}")
+async def conversation_delete(conv_id: str,
+                              x_api_key: str | None = Header(default=None)) -> dict:
+    _auth(x_api_key)
+    return {"deleted": CONV.delete(conv_id)}
+
+
+class ConversationRenameRequest(BaseModel):
+    title: str
+
+
+@app.put("/api/conversations/{conv_id}/title")
+async def conversation_rename(conv_id: str, req: ConversationRenameRequest,
+                              x_api_key: str | None = Header(default=None)) -> dict:
+    _auth(x_api_key)
+    ok = CONV.rename(conv_id, req.title)
+    if not ok:
+        raise HTTPException(status_code=404, detail="conversation not found")
+    return {"id": conv_id, "title": req.title}
 
 
 class MemoryStoreRequest(BaseModel):

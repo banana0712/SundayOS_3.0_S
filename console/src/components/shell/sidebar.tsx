@@ -79,6 +79,15 @@ export function Sidebar() {
                     )}
                   />
                   <span className="relative">{t(`nav.${item.slug}`)}</span>
+                  {item.status !== "done" && (
+                    <span
+                      className={cn(
+                        "ml-auto h-1.5 w-1.5 shrink-0 rounded-full",
+                        item.status === "partial" ? "bg-warning" : "bg-tertiary opacity-50"
+                      )}
+                      title={item.status === "partial" ? "部分实现 / Partial" : "计划中 / Planned"}
+                    />
+                  )}
                 </button>
               );
             })}

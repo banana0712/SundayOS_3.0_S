@@ -10,6 +10,7 @@ export function ComingSoon({ title }: { title: string }) {
   const { t } = useI18n();
   const item = NAV.find((n) => n.slug === view) ?? NAV.find((n) => n.label === title);
   const Icon = item?.icon;
+  const phase = PHASE_MAP[view] ?? "?";
 
   return (
     <div className="flex h-full items-center justify-center p-8">
@@ -18,7 +19,10 @@ export function ComingSoon({ title }: { title: string }) {
           {Icon && <Icon className="h-6 w-6" />}
         </div>
         <h2 className="text-title text-primary">{item ? t(`nav.${item.slug}`) : title}</h2>
-        <p className="mx-auto mt-2 max-w-xs text-[14px] leading-relaxed text-secondary">
+        <div className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-border px-2.5 py-0.5 text-[11px] text-tertiary">
+          Phase {phase}
+        </div>
+        <p className="mx-auto mt-3 max-w-xs text-[14px] leading-relaxed text-secondary">
           {t("soon.body")}
         </p>
         <button
@@ -32,3 +36,10 @@ export function ComingSoon({ title }: { title: string }) {
     </div>
   );
 }
+
+const PHASE_MAP: Record<string, string> = {
+  memory: "1–2", personality: "2–3", emotion: "2", relationship: "3",
+  planner: "1–2", workflow: "2", prompt: "2", knowledge: "2",
+  mcp: "2", tools: "1–2", model: "1", scheduler: "3", events: "3",
+  logs: "3", evaluation: "3", developer: "2", api: "2", settings: "4",
+};

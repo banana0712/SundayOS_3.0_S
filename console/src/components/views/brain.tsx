@@ -65,6 +65,10 @@ export function BrainView() {
 
   return (
     <div className="mx-auto grid max-w-[1400px] grid-cols-1 gap-4 px-6 py-6 xl:grid-cols-[1fr_340px]">
+      {/* Demo banner */}
+      <div className="xl:col-span-2 rounded-[12px] border border-[color:var(--warning)]/30 bg-[color:var(--warning)]/10 px-4 py-2.5 text-[12px] text-warning">
+        ⚠️ 演示模式 · Demo Mode — 认知节点状态为静态示例。Node states are static examples, not live data.
+      </div>
       {/* Canvas */}
       <Card className="relative overflow-hidden p-0">
         <div className="flex items-center justify-between border-b border-border px-5 py-3.5">

@@ -40,6 +40,10 @@ export function DashboardView() {
     <div className="mx-auto max-w-[1400px] px-6 py-6">
       {/* Header */}
       <motion.div variants={fade} custom={0} initial="hidden" animate="show" className="mb-6">
+        {/* Demo data banner */}
+        <div className="mb-4 rounded-[12px] border border-[color:var(--warning)]/30 bg-[color:var(--warning)]/10 px-4 py-2.5 text-[12px] text-warning">
+          ⚠️ 演示数据 · Demo Data — 数据来自本地模拟，非真实后端状态。Numbers are simulated, not live backend data.
+        </div>
         <div className="flex items-center gap-2 text-caption text-tertiary">
           <span className="relative flex h-1.5 w-1.5">
             <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-success opacity-60" />

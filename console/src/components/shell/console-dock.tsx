@@ -68,6 +68,9 @@ export function ConsoleDock() {
                 <Radio className="h-3.5 w-3.5 text-accent" />
                 Console
               </div>
+              <span className="rounded-full border border-[color:var(--warning)]/30 bg-[color:var(--warning)]/10 px-1.5 py-0.5 text-[9px] text-warning">
+                demo
+              </span>
               <Stat icon={Zap} label="Token/s" value="312" />
               <Stat icon={Clock} label="Latency" value="412ms" tone="ok" />
               <Stat icon={Database} label="Mem writes" value="18" />

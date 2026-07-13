@@ -54,8 +54,8 @@ export function Inspector() {
               <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-tertiary">
                 Inspector · {tab}
               </span>
-              <span className="rounded-full border border-border px-2 py-0.5 text-[10px] text-tertiary">
-                live
+              <span className="rounded-full border border-[color:var(--warning)]/30 bg-[color:var(--warning)]/10 px-2 py-0.5 text-[10px] text-warning">
+                [demo]
               </span>
             </div>
 
