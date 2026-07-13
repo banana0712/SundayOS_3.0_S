@@ -33,6 +33,7 @@ from .memory.reflection import run_reflection, schedule_reflection
 from .memory.experience import run_experience_layer
 from .cognition.tools import TOOLS, SKILLS, _memory_search_handler
 from .cognition.react_loop import ReActLoop, ReActResult
+from .cognition.context_builder import build_context, AssembledContext
 from .persona import build_system_prompt, load as load_persona, reload as reload_persona, version as persona_version
 from .persona.empathy import run_empathy_pipeline, analyze_user as empathy_analyze
 
@@ -160,14 +161,15 @@ async def shortcuts_chat(req: ShortcutChatRequest,
 
     user = _resolve_user(x_api_key)
 
-    hits = MEMORY.retrieve(req.message, user_id=user, k=4)
-    context = "\n".join(f"- {h.node.content}" for h in hits)
+    # Topic-aware cross-session context
+    assembled = await build_context(req.message, user, MEMORY, ROUTER)
+    context_block = assembled.to_prompt_section() if assembled else ""
 
     use_reasoner = needs_reasoner("chat", req.message,
                                   BeliefState(user_id=user))
     system_prompt = build_system_prompt()
-    if context:
-        system_prompt += f"\n\n[相关记忆]\n{context}"
+    if context_block:
+        system_prompt += f"\n\n{context_block}"
 
     if use_reasoner:
         react = ReActLoop(router=ROUTER, tools=TOOLS, memory_store=MEMORY, skills=SKILLS,
@@ -395,6 +397,24 @@ class EmpathyRequest(BaseModel):
     message: str
 
 
+@app.post("/api/debug/context")
+async def debug_context(req: EmpathyRequest,
+                        x_api_key: str | None = Header(default=None)) -> dict:
+    """Debug endpoint — see what context the ContextBuilder assembles."""
+    _auth(x_api_key)
+    user = _resolve_user(x_api_key)
+    assembled = await build_context(req.message, user, MEMORY, ROUTER)
+    return {
+        "message": req.message,
+        "context": assembled.to_prompt_section(),
+        "profile_chars": len(assembled.profile),
+        "history_chars": len(assembled.topic_history),
+        "reflections_chars": len(assembled.reflections),
+        "total_chars": assembled.total_chars,
+        "close_to_cap": assembled.total_chars > 2400,
+    }
+
+
 @app.post("/api/empathy/analyze")
 async def empathy_analyze_endpoint(req: EmpathyRequest,
                                    x_api_key: str | None = Header(default=None)) -> dict:
@@ -445,9 +465,9 @@ async def chat(req: ChatRequest, x_api_key: str | None = Header(default=None)) -
     except GuardrailTripwire as t:
         raise HTTPException(status_code=400, detail=f"guardrail:{t.layer}:{t.reason}")
 
-    # Retrieve memory context (System 1 view)
-    hits = MEMORY.retrieve(req.message, user_id=_resolve_user(x_api_key), k=6)
-    context = "\n".join(f"- {h.node.content}" for h in hits)
+    # Build topic-aware cross-session context (Engram/GAM/APEX-MEM)
+    assembled = await build_context(req.message, _resolve_user(x_api_key), MEMORY, ROUTER)
+    context_block = assembled.to_prompt_section() if assembled else ""
 
     # Empathy: UU analysis → IRG guidance
     empathy_snapshot, empathy_guidance = await run_empathy_pipeline(
@@ -462,8 +482,8 @@ async def chat(req: ChatRequest, x_api_key: str | None = Header(default=None)) -
     system_prompt = build_system_prompt()
     if empathy_guidance:
         system_prompt += f"\n\n[当前互动]\n{empathy_guidance}"
-    if context:
-        system_prompt += f"\n\n[相关记忆]\n{context}"
+    if context_block:
+        system_prompt += f"\n\n{context_block}"
 
     react_steps = []
     if use_reasoner:
@@ -588,7 +608,7 @@ async def chat(req: ChatRequest, x_api_key: str | None = Header(default=None)) -
         "system": "reasoner" if use_reasoner else "talker",
         "complexity": int(complexity),
         "risk": risk_level(req.message),
-        "memory_hits": len(hits),
+        "memory_hits": len(assembled.topic_history) if assembled else 0,
         "react_steps": react_steps,
         "trace": trace,
     }
@@ -615,8 +635,8 @@ async def chat_stream(req: ChatRequest,
             return
 
         # Memory retrieval
-        hits = MEMORY.retrieve(req.message, user_id=_resolve_user(x_api_key), k=6)
-        context = "\n".join(f"- {h.node.content}" for h in hits)
+        assembled = await build_context(req.message, _resolve_user(x_api_key), MEMORY, ROUTER)
+        context_block = assembled.to_prompt_section() if assembled else ""
 
         # Empathy: UU analysis → IRG guidance
         empathy_snapshot, empathy_guidance = await run_empathy_pipeline(
@@ -630,8 +650,8 @@ async def chat_stream(req: ChatRequest,
         system_prompt = build_system_prompt()
         if empathy_guidance:
             system_prompt += f"\n\n[当前互动]\n{empathy_guidance}"
-        if context:
-            system_prompt += f"\n\n[相关记忆]\n{context}"
+        if context_block:
+            system_prompt += f"\n\n{context_block}"
 
         conv_id = req.conversation_id
         if not conv_id or not CONV.get(conv_id):
