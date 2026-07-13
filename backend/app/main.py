@@ -53,7 +53,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# --- singletons (start-simple: in-process; swap for DI/DB in production) ----
+# --- Runtime — the single skeletal container for all subsystems ---------------
+# All subsystems are held in one typed object. See app/runtime.py for:
+#   - Field documentation (what each subsystem is)
+#   - LINKAGE graph (who calls whom, in what order)
+# When you add a subsystem: add 1 field to Runtime + 1 entry to its linkage.
+from .runtime import Runtime
+
 ENGINES = build_engines()
 ROUTER = CognitiveRouter(ENGINES)
 # Use SQLite-backed memory (persists across restarts). Falls back to in-memory
@@ -65,9 +71,6 @@ except Exception:
     MEMORY = MemoryStore()
 CONV = ConversationStore()
 API_KEY = os.getenv("SUNDAY_API_KEY", "change-me-in-production")
-# Track per-user session importance for reflection auto-trigger.
-# Reset on server restart (acceptable — reflection will catch up then).
-_SESSION_IMPORTANCE: dict[str, int] = {}
 
 # Auto-upgrade embedder to semantic if API keys are configured AND the provider
 # actually supports embeddings (DeepSeek currently does not). Falls back to the
@@ -78,34 +81,29 @@ try:
 except Exception:
     pass  # hash embedder is always available
 
+# ---- Runtime: the canonical container for all subsystems -----------------
+runtime = Runtime(
+    engines=ENGINES,
+    router=ROUTER,
+    memory=MEMORY,
+    conversations=CONV,
+    tools=TOOLS,
+    skills=SKILLS,
+)
+RT = runtime  # shorter alias
+runtime.semantic_embedder_available = _has_semantic
+
 # --- usage stats (in-memory, resets on restart) ------------------------------
+# Deprecated: use runtime.messages_today etc. and runtime.record_call() directly.
 from collections import defaultdict
 from datetime import datetime as _dt
-_USAGE = {
-    "messages_today": 0,
-    "calls_today": 0,
-    "tokens_today": 0,
-    "cost_today": 0.0,
-    "total_latency_ms": 0.0,
-    "call_count": 0,
-    "engine_calls": defaultdict(int),
-    "recent_events": [],  # list of {time, event}
-}
+# _USAGE is deprecated — use runtime.messages_today etc. directly.
+# _record_stats() is deprecated — use runtime.record_call().
 
 def _record_stats(engine_id: str | None, latency_ms: float,
                   prompt_tokens: int, completion_tokens: int, cost_usd: float,
                   event: str = "") -> None:
-    _USAGE["messages_today"] += 1
-    _USAGE["calls_today"] += 1
-    _USAGE["tokens_today"] += prompt_tokens + completion_tokens
-    _USAGE["cost_today"] += cost_usd
-    _USAGE["total_latency_ms"] += latency_ms
-    _USAGE["call_count"] += 1
-    if engine_id:
-        _USAGE["engine_calls"][engine_id] += 1
-    if event:
-        _USAGE["recent_events"].insert(0, {"time": _dt.now().isoformat(), "event": event})
-        _USAGE["recent_events"] = _USAGE["recent_events"][:20]
+    runtime.record_call(engine_id, latency_ms, prompt_tokens, completion_tokens, cost_usd, event)
 
 # Persona is loaded from persona.yaml (Git-versioned, per ADR-009).
 # Call reload_persona() to pick up changes without restarting.
@@ -261,18 +259,18 @@ async def health() -> dict:
 async def dashboard_stats(x_api_key: str | None = Header(default=None)) -> dict:
     """Real-time dashboard data — replaces frontend mock values."""
     _auth(x_api_key)
-    avg_lat = (_USAGE["total_latency_ms"] / _USAGE["call_count"]
-               if _USAGE["call_count"] > 0 else 0)
+    avg_lat = (runtime.total_latency_ms / runtime.call_count
+               if runtime.call_count > 0 else 0)
     return {
-        "messages_today": _USAGE["messages_today"],
-        "model_calls": _USAGE["calls_today"],
-        "tokens_used": _USAGE["tokens_today"],
-        "cost_today": round(_USAGE["cost_today"], 4),
+        "messages_today": runtime.messages_today,
+        "model_calls": runtime.calls_today,
+        "tokens_used": runtime.tokens_today,
+        "cost_today": round(runtime.cost_today, 4),
         "memory_nodes": len(MEMORY.all()),
         "avg_latency_ms": round(avg_lat, 1),
         "active_tools": len(SKILLS.list()),
         "engines": [
-            {"id": e.id, "calls": _USAGE["engine_calls"].get(e.id, 0),
+            {"id": e.id, "calls": runtime.engine_calls.get(e.id, 0),
              "strong": e.caps.strong_reasoning, "local": e.caps.local}
             for e in ENGINES
         ],
@@ -283,7 +281,7 @@ async def dashboard_stats(x_api_key: str | None = Header(default=None)) -> dict:
         "experience_count": sum(
             1 for n in MEMORY.all() if n.type.value == "experience"
         ),
-        "recent_events": _USAGE["recent_events"][:8],
+        "recent_events": runtime.recent_events[:8],
     }
 
 
@@ -324,19 +322,19 @@ async def debug_overview(x_api_key: str | None = Header(default=None)) -> dict:
                      for s in SKILLS.list()],
         },
         "usage": {
-            "messages_today": _USAGE["messages_today"],
-            "calls_today": _USAGE["calls_today"],
-            "tokens_today": _USAGE["tokens_today"],
-            "cost_today": round(_USAGE["cost_today"], 6),
+            "messages_today": runtime.messages_today,
+            "calls_today": runtime.calls_today,
+            "tokens_today": runtime.tokens_today,
+            "cost_today": round(runtime.cost_today, 6),
             "avg_latency_ms": round(
-                _USAGE["total_latency_ms"] / _USAGE["call_count"], 1
-            ) if _USAGE["call_count"] > 0 else 0,
+                runtime.total_latency_ms / runtime.call_count, 1
+            ) if runtime.call_count > 0 else 0,
         },
         "reflection": {
             "count": sum(
                 1 for n in MEMORY.all() if n.type == MemoryType.REFLECTION
             ),
-            "session_importance": dict(_SESSION_IMPORTANCE),
+            "session_importance": dict(runtime.session_importance),
         },
         "checks": {
             "db_accessible": isinstance(MEMORY, SQLiteMemoryStore) and
@@ -597,9 +595,9 @@ async def chat(req: ChatRequest, x_api_key: str | None = Header(default=None)) -
     ))
 
     # -- auto-trigger reflection if importance threshold crossed ---
-    _SESSION_IMPORTANCE[_resolve_user(x_api_key)] = _SESSION_IMPORTANCE.get(_resolve_user(x_api_key), 0) + importance
+    runtime.session_importance[_resolve_user(x_api_key)] = runtime.session_importance.get(_resolve_user(x_api_key), 0) + importance
     schedule_reflection(MEMORY, _resolve_user(x_api_key), ROUTER,
-                        session_importance=_SESSION_IMPORTANCE[_resolve_user(x_api_key)])
+                        session_importance=runtime.session_importance[_resolve_user(x_api_key)])
 
     return {
         "reply": reply,
