@@ -2,6 +2,7 @@
 const nextConfig = {
   reactStrictMode: true,
   output: "export",
+  basePath: "/console",
   // API routes are not included in static export — the browser calls
   // the backend directly with X-API-Key header (see lib/api-key.ts).
 };

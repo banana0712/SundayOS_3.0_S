@@ -213,25 +213,21 @@ class ChatRequest(BaseModel):
 # --- static console files (built from Next.js with output:export) ----------
 _CONSOLE_DIR = Path(__file__).parent.parent / "console_static"
 if _CONSOLE_DIR.exists():
-    # Mount static assets (JS, CSS, images) from the build output
-    app.mount("/console/_next", StaticFiles(directory=str(
-        _CONSOLE_DIR / "_next"
-    )), name="console_assets")
-
-    @app.get("/console/{rest_of_path:path}")
-    async def console_spa(rest_of_path: str) -> FileResponse:
-        """Serve the Console SPA. All paths return index.html."""
-        target = _CONSOLE_DIR / rest_of_path
-        # If the request matches a real file (_next chunks, index.txt, etc.), serve it
-        if target.exists() and target.is_file():
-            return FileResponse(str(target))
-        # Otherwise serve index.html (SPA routing)
-        return FileResponse(str(_CONSOLE_DIR / "index.html"))
+    from starlette.responses import RedirectResponse
 
     @app.get("/console")
-    async def console_root() -> FileResponse:
-        """Console landing page."""
-        return FileResponse(str(_CONSOLE_DIR / "index.html"))
+    async def console_redirect() -> RedirectResponse:
+        """Redirect /console → /console/ so StaticFiles handles SPA routes."""
+        return RedirectResponse(url="/console/", status_code=301)
+
+    # StaticFiles with html=True serves:
+    #   /console/ → index.html
+    #   /console/_next/static/... → JS/CSS/chunks
+    #   /console/dashboard, /console/brain etc → index.html (SPA fallback)
+    app.mount("/console", StaticFiles(
+        directory=str(_CONSOLE_DIR),
+        html=True,
+    ), name="console")
 
 
 @app.get("/", response_class=HTMLResponse)
