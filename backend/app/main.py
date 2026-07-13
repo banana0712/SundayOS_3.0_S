@@ -172,6 +172,7 @@ async def chat(req: ChatRequest, x_api_key: str | None = Header(default=None)) -
             "fallbacks_used": result.trace.fallbacks_used,
             "usage": result.trace.usage,
             "latency_ms": result.trace.latency_ms,
+            "errors": result.trace.errors,
         },
     }
 

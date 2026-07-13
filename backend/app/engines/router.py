@@ -48,6 +48,7 @@ class RouteTrace:
     fallbacks_used: list[str] = field(default_factory=list)
     usage: dict = field(default_factory=dict)
     latency_ms: float = 0.0
+    errors: dict[str, str] = field(default_factory=dict)  # engine_id → why it failed
 
 
 @dataclass
@@ -206,9 +207,11 @@ class CognitiveRouter:
                 }
                 trace.latency_ms = round((time.monotonic() - t0) * 1000, 1)
                 return CognitiveResult(response=resp, trace=trace)
-            except Exception:  # noqa: BLE001 — degrade gracefully, try next
+            except Exception as exc:  # noqa: BLE001 — degrade gracefully, try next
                 self.breaker.record_failure(engine.id)
                 trace.fallbacks_used.append(engine.id)
+                # capture the real reason so failures aren't silently swallowed
+                trace.errors[engine.id] = f"{type(exc).__name__}: {str(exc)[:300]}"
         trace.latency_ms = round((time.monotonic() - t0) * 1000, 1)
         trace.chosen = None
         return CognitiveResult(response=None, trace=trace)
