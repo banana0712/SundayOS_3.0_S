@@ -4,11 +4,31 @@
 
 ## 启动流程（每次会话必做）
 
+**最快方式**：在对话中输入 `/bootstrap`，AI 自动按 10 步流程对齐项目全貌（详见 `.claude/skills/bootstrap.md`）。
+
+手动流程：
 1. 读 [SUNDAY_CONTEXT.md](SUNDAY_CONTEXT.md) —— 项目全貌与七条核心理念。
-2. 读 [AGENTS.md](AGENTS.md) —— 确认你当前扮演的角色与边界。
-3. 按任务需要查 [docs/](docs/)（架构 / 3.0 规范 / ADR / 设计 / 路线图）。
-4. 检查记忆目录（若可用）中的相关条目。
-5. 再开始动手。
+2. 读 [docs/AI_CONTEXT.md](docs/AI_CONTEXT.md) —— 唯一入口 + 文档地图。
+3. 读 [docs/CURRENT_STATE.md](docs/CURRENT_STATE.md) —— 诚实进度报告。
+4. 读 [backend/app/runtime.py](backend/app/runtime.py) —— ★ 架构骨骼 + LINKAGE 联动图。
+5. 按任务需要查 [docs/](docs/)（架构 / 3.0 规范 / ADR / 设计 / 路线图 / 调试）。
+6. 再开始动手。
+
+## 每次会话结束时必须更新的文档
+
+```
+今天的开发已完成。
+
+请更新：
+- CURRENT_STATE.md
+- ROADMAP.md
+- PROJECT_MEMORY.md
+- 如果架构有变化，同步更新 ARCHITECTURE.md
+- 如果有新增模块/文档，同步更新 AI_CONTEXT.md
+- 如果有新增调试入口，同步更新 DEBUGGING.md
+
+然后总结今天的进展，为下一次开发会话做好准备。
+```
 
 ## 这是什么项目
 
