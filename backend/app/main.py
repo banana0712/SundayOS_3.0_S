@@ -28,6 +28,7 @@ from .memory.sqlite_store import SQLiteMemoryStore
 from .memory.embedding import auto_upgrade_embedder, set_embedder
 from .memory.importance import score_importance
 from .memory.reflection import run_reflection, schedule_reflection
+from .memory.experience import run_experience_layer
 from .cognition.tools import TOOLS, SKILLS, _memory_search_handler
 from .cognition.react_loop import ReActLoop, ReActResult
 from .persona import build_system_prompt, load as load_persona, reload as reload_persona, version as persona_version
@@ -248,6 +249,9 @@ async def dashboard_stats(x_api_key: str | None = Header(default=None)) -> dict:
         "conv_count": CONV.count(),
         "reflect_count": sum(
             1 for n in MEMORY.all() if n.type.value == "reflection"
+        ),
+        "experience_count": sum(
+            1 for n in MEMORY.all() if n.type.value == "experience"
         ),
         "recent_events": _USAGE["recent_events"][:8],
     }
@@ -828,11 +832,10 @@ async def memory_reflections(limit: int = 20,
 
 @app.post("/api/memory/consolidate")
 async def memory_consolidate(x_api_key: str | None = Header(default=None)) -> dict:
-    """Trigger memory consolidation — archive expired low-importance nodes.
+    """Run L1 consolidation — archive expired low-importance memories.
 
-    Runs archive_expired() which removes memories whose effective importance
-    has decayed below the threshold. CRITICAL (10) and frozen nodes are
-    never touched.
+    For the full L3 experience layer (merge + archive + extract + patterns),
+    use POST /api/experience/run.
     """
     _auth(x_api_key)
     dropped = MEMORY.archive_expired(threshold=0.4)
@@ -841,6 +844,57 @@ async def memory_consolidate(x_api_key: str | None = Header(default=None)) -> di
         "dropped": dropped,
         "remaining": total,
         "message": f"Archived {dropped} expired memories. {total} remaining.",
+    }
+
+
+# --- experience layer endpoints (L2→L3) -------------------------------------
+
+@app.post("/api/experience/run")
+async def experience_run(x_api_key: str | None = Header(default=None)) -> dict:
+    """Run the full L3 Experience layer.
+
+    Performs three operations from From Storage to Experience (2026):
+    1. CONSOLIDATION — merge similar memories, archive expired, extract semantics
+    2. PATTERN DETECTION — find repeating behavioral patterns → EXPERIENCE nodes
+    3. PROCEDURAL PRIMITIVE — detect recurring tool sequences → skill proposals
+
+    This is the nightly batch job for Sunday's cognitive evolution.
+    Uses the current user's identity (derived from API key).
+    """
+    _auth(x_api_key)
+    user = _resolve_user(x_api_key)
+    result = await run_experience_layer(MEMORY, ROUTER, user)
+    return {
+        "user": user,
+        "consolidation": result["consolidation"],
+        "patterns_found": len(result["patterns"]),
+        "patterns": result["patterns"],
+        "primitives_found": len(result["primitives"]),
+        "primitives": result["primitives"],
+    }
+
+
+@app.get("/api/experience/nodes")
+async def experience_nodes(limit: int = 20,
+                           x_api_key: str | None = Header(default=None)) -> dict:
+    """List EXPERIENCE nodes for the current user."""
+    _auth(x_api_key)
+    from .memory.schema import MemoryType
+    all_nodes = MEMORY.all(_resolve_user(x_api_key))
+    exp_nodes = [n for n in all_nodes if n.type == MemoryType.EXPERIENCE]
+    exp_nodes.sort(key=lambda n: n.created_at, reverse=True)
+    return {
+        "experiences": [
+            {
+                "id": n.id,
+                "content": n.content,
+                "source": n.source,
+                "importance": n.importance,
+                "evidence_ids": n.evidence_ids,
+                "created_at": n.created_at.isoformat(),
+            }
+            for n in exp_nodes[:limit]
+        ]
     }
 
 
