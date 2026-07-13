@@ -206,11 +206,13 @@ def build_empathy_guidance(snapshot: EmotionalSnapshot) -> str:
 
     # Core empathy rule per emotion (XiaoIce §IRG)
     guidance = {
-        "joy": "用户正在表达喜悦。你的任务是**共鸣并放大这份快乐**——不要扫兴，不要转移话题。和他一起开心。",
+        "joy": "用户正在表达喜悦。你的任务是共鸣并庆祝——不要扫兴，不要转移话题。用真实的高兴去回应ta的高兴。",
         "sadness": (
             "用户可能感到悲伤。**先倾听，再共情，最后才给建议**。"
             "不要说'别难过了'或'振作起来'——这会让对方觉得情绪不被允许。"
-            "用'听起来…'、'我能感觉到…'开头，让对方知道你在陪他。"
+            "用日常的白话回应——像真人朋友那样说话，不要用比喻句、"
+            "不要用自然意象（风/雨/云/雾/阳光/天气），不要'轻轻靠近'之类的动作描写。"
+            "一句话就好。然后等对方说下去。"
         ),
         "anger": (
             "用户正在生气或不满。**先认可情绪的合理性**——不要急着讲道理或劝解。"
@@ -242,6 +244,11 @@ def build_empathy_guidance(snapshot: EmotionalSnapshot) -> str:
         base += "\n用户在抱怨——先认可感受，再提供建设性视角。"
 
     parts.append(base)
+    # Universal rule: no stage directions, no weather/nature metaphors
+    parts.append(
+        "不要用括号写动作描写（如'轻轻靠近''微笑'）。不要用自然意象做比喻"
+        "（风/云/雨/雾/阳光/季节/天气）。像真人朋友说话，不像散文。"
+    )
     return "\n".join(parts)
 
 
