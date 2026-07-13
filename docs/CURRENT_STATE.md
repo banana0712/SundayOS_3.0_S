@@ -9,13 +9,15 @@
 ## 1. 总览一眼
 
 ```
-文档体系     ✅ 7 文件工程文档体系（AI_CONTEXT / ARCHITECTURE / CURRENT_STATE / ROADMAP / DESIGN_SYSTEM / PROJECT_MEMORY）+ AGENTS + CLAUDE + SUNDAY_CONTEXT
+文档体系     ✅ 7 文件工程文档体系 + 5 份指南（调试/部署/Shortcuts/Ollama）+ 1 份世界设定
 3.0 设计集   ✅ 13 技术规范 + 11 ADR（001-011）+ 论文附录
-后端实现     🟡 Phase 1 ~85%：引擎路由✅ 记忆持久化✅ 反思✅ ReAct✅ SSE✅ 护栏✅ Chat UI✅
-             63 测试全过（0.8s）。记忆 SQLite 持久化、ReAct 循环完整、SSE 流式运行中
-前端实现     🟡 Dashboard 实时数据 + Brain Viz + Memory Center + Chat 流式（Next.js 15）
-iPhone 集成  🟡 API 就绪（`/api/shortcuts/chat`）+ Shortcuts 配置文档，待真机验证
-Git 状态     干净，main 分支，与 origin/main 同步
+后端实现     🟡 Phase 1 ~90%：引擎路由✅ 记忆三层✅ 反思✅ ReAct✅ SSE✅ 护栏✅ Chat UI✅
+             71 测试全过（1.0s）。Runtime 骨骼固化、ContextBuilder 跨会话上下文、优化完成
+前端实现     ✅ Dashboard 实时数据 + Brain + Memory Center + Chat 流式 + 云端部署
+             useDrift 移除、代码分割、SSE 节流优化完成
+iPhone 集成  🟡 API 就绪（`/api/shortcuts/chat`）+ 配置文档，待真机验证
+服务器       ✅ 小兔云香港 2H2G，24/7，Console 已部署到 /console
+Git 状态     已全量推送，与 origin/main 同步
 ```
 
 ---

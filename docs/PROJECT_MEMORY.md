@@ -116,6 +116,37 @@
 - `docs/DESIGN_SYSTEM.md` —— 设计规范与改进建议
 - `docs/PROJECT_MEMORY.md` —— 本文档
 
+### 2.7 Runtime 骨骼固化（无 ADR 编号，工程决策）
+
+**我们做了什么**：
+- 新建 `app/runtime.py`：将所有子系统（引擎、路由、记忆、对话、工具、技能）收敛到一个带类型的 `Runtime` dataclass 中
+- 从 `main.py` 的 10 个分散模块级变量收敛为一条 `runtime = Runtime(...)`
+- 内建 LINKAGE 图（ASCII 依赖图 + 6 条数据流描述），每次修改模块时必须更新
+
+**已落地的代码**：
+- `backend/app/runtime.py`：`Runtime` dataclass（60 行） + LINKAGE graph（80 行文档）
+
+**为什么这样做**：
+- 功能增多后模块之间的联动关系必须可追溯、可审计
+- 新增子系统 = 在 Runtime 加一个字段 + 在 LINKAGE 加一条记录
+- 交接项目 → 看 Runtime 就知道有什么组件 → 看 LINKAGE 就知道它们怎么交互
+
+### 2.8 ContextBuilder — 话题感知跨会话上下文
+
+**我们做了什么**：
+- 替换单纯的 `MEMORY.retrieve(k=6)` 为结构化上下文组装流水线
+- 话题提取（廉价 LLM）→ 跨会话话题网络检索 → 时间锚定排序 → 分类组装
+- 上下文上限 ~3000 tokens（依据 Engram 论文：9.6K 精选 > 79K 全量）
+
+**已落地的代码**：
+- `backend/app/cognition/context_builder.py`：`build_context()` + `AssembledContext`
+- 上下文分四段注入：`[用户画像]` `[当前状态]` `[相关洞察]` `[相关记忆]`
+
+**为什么这样做**：
+- 论文数据：精简检索的 9.6K token 上下文比全量 79K token 精度高 10.4 个百分点
+- 对话之间不再孤立——"三天前聊的跑步"和"刚才问的伤病"自动关联到同一话题
+- 时间锚定让 LLM 知道「这是三个月前说的」vs「这是刚才说的」
+
 ---
 
 ## 3. 技术选型记录

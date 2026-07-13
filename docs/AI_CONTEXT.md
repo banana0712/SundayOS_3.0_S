@@ -45,9 +45,24 @@ SundayOS/
 │   │   ├── DEPLOY_RAILWAY.md  #     Railway 部署指南
 │   │   ├── DEBUGGING.md       #     ★ 全功能调试说明书（排错先看这个）
 │   │   ├── SHORTCUTS_SETUP.md  #     iPhone 快捷指令 + Siri 接入指南
+│   │   ├── OLLAMA_SETUP.md     #     Ollama 本地 Embedding 配置
 │   │   └── DEPLOY_SERVER.md    #     云服务器部署指南（小兔云/阿里云等）
 │   └── 3.0/                   #   实现级技术规范（13 文档 + 10 ADR）
+├── persona.yaml                # ★ Sunday 人格真源（Git 版本化，改人格=commit）
 ├── backend/                   # FastAPI 参考实现（Python 3.11+）
+│   └── app/
+│       ├── runtime.py          #   ★ 架构骨骼：所有子系统的容器 + LINKAGE 图
+│       ├── cognition/
+│       │   ├── context_builder.py  # 话题感知跨会话上下文组装
+│       │   ├── react_loop.py       # ReAct 执行循环
+│       │   └── tools.py            # 技能注册中心（8 技能）
+│       ├── memory/
+│       │   ├── sqlite_store.py     # SQLite 持久化
+│       │   ├── reflection.py       # L2 反思引擎
+│       │   └── experience.py       # L3 体验抽象层
+│       ├── persona/
+│       │   └── empathy.py          # 共情计算（XiaoIce UU+IRG）
+│       └── routers/           # (预留) 未来路由拆分
 ├── console/                   # Next.js 15 Web 控制台（前端原型）
 └── 1.0/                       # 历史文档（仅文档，无代码）
 ```
@@ -78,6 +93,7 @@ SundayOS/
 | 调试/排错 | **docs/guides/DEBUGGING.md**（第一个看这个） | /health · /api/debug/env · /docs |
 | 安全审查 | ARCHITECTURE.md §6 · PROJECT_MEMORY.md §4 | docs/3.0/08-security-and-autonomy.md |
 | 新成员入职 | 本文件 → CURRENT_STATE.md → ARCHITECTURE.md | SUNDAY_CONTEXT.md（理解理念） |
+| 了解“系统里有什么/谁调了谁” | **runtime.py**（80 行 Runtime + LINKAGE 图） | PROJECT_MEMORY.md §2.7 |
 
 ### 文档层级关系
 
