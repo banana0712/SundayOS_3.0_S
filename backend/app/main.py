@@ -30,6 +30,7 @@ from .memory.importance import score_importance
 from .memory.reflection import run_reflection, schedule_reflection
 from .cognition.tools import TOOLS, SKILLS, _memory_search_handler
 from .cognition.react_loop import ReActLoop, ReActResult
+from .persona import build_system_prompt, load as load_persona, reload as reload_persona, version as persona_version
 
 load_dotenv(override=True)
 
@@ -101,10 +102,8 @@ def _record_stats(engine_id: str | None, latency_ms: float,
         _USAGE["recent_events"].insert(0, {"time": _dt.now().isoformat(), "event": event})
         _USAGE["recent_events"] = _USAGE["recent_events"][:20]
 
-PERSONA = (
-    "你是 Sunday，一个温暖、克制、聪明的个人 AI 伙伴。理性但不冷漠，"
-    "幽默但不轻浮。面对情绪优先共情，面对问题优先解决。称呼用户为『你』。"
-)
+# Persona is loaded from persona.yaml (Git-versioned, per ADR-009).
+# Call reload_persona() to pick up changes without restarting.
 
 
 def _auth(x_api_key: str | None) -> None:
@@ -156,7 +155,7 @@ async def shortcuts_chat(req: ShortcutChatRequest,
 
     use_reasoner = needs_reasoner("chat", req.message,
                                   BeliefState(user_id=user))
-    system_prompt = PERSONA
+    system_prompt = build_system_prompt()
     if context:
         system_prompt += f"\n\n[相关记忆]\n{context}"
 
@@ -343,6 +342,22 @@ async def skills(x_api_key: str | None = Header(default=None)) -> dict:
     return SKILLS.summary()
 
 
+@app.get("/api/persona")
+async def persona_view(reload: bool = False,
+                       x_api_key: str | None = Header(default=None)) -> dict:
+    """View Sunday's current persona (from persona.yaml).
+
+    Set ?reload=true to hot-reload from disk without restarting.
+    """
+    _auth(x_api_key)
+    data = reload_persona() if reload else load_persona()
+    return {
+        "version": persona_version(),
+        "persona": data,
+        "reloaded": reload,
+    }
+
+
 @app.get("/api/engines")
 async def engines() -> dict:
     return {
@@ -379,7 +394,7 @@ async def chat(req: ChatRequest, x_api_key: str | None = Header(default=None)) -
     use_reasoner = needs_reasoner(req.role_hint or "chat", req.message, belief)
     complexity = Complexity.L3_DEEP if use_reasoner else Complexity.L2_DAILY
 
-    system_prompt = PERSONA
+    system_prompt = build_system_prompt()
     if context:
         system_prompt += f"\n\n[相关记忆]\n{context}"
 
@@ -540,7 +555,7 @@ async def chat_stream(req: ChatRequest,
         belief = BeliefState(user_id=_resolve_user(x_api_key))
         use_reasoner = needs_reasoner(req.role_hint or "chat", req.message, belief)
 
-        system_prompt = PERSONA
+        system_prompt = build_system_prompt()
         if context:
             system_prompt += f"\n\n[相关记忆]\n{context}"
 
