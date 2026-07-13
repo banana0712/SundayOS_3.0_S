@@ -10,7 +10,10 @@ import os
 from dotenv import load_dotenv
 from fastapi import FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
+
+from .webchat import CHAT_HTML
 
 from .cognition.belief import BeliefState
 from .cognition.dispatch import needs_reasoner, risk_level
@@ -59,6 +62,12 @@ class ChatRequest(BaseModel):
     user_id: str
     role_hint: str | None = None
     voice_input: bool = False
+
+
+@app.get("/", response_class=HTMLResponse)
+async def home() -> str:
+    """Serve the self-contained chat web page at the root URL."""
+    return CHAT_HTML
 
 
 @app.get("/health")
