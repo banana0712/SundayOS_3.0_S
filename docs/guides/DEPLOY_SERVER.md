@@ -51,7 +51,18 @@ DeepSeek Base URL（默认 https://api.deepseek.com/v1）: [直接回车]
 
 ---
 
-## 3. 验证
+## 3. 安装 Ollama（语义 Embedding）
+
+```bash
+curl -fsSL https://ollama.com/install.sh | sh
+ollama pull nomic-embed-text
+```
+
+详见 [OLLAMA_SETUP.md](OLLAMA_SETUP.md)。不装也能用——Sunday 自动回退到 hash embedder。
+
+---
+
+## 4. 验证
 
 ```bash
 # 服务器上验证

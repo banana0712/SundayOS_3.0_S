@@ -158,6 +158,67 @@ def _env(name: str) -> str | None:
     return None
 
 
+# ---------------------------------------------------------------------------
+# Ollama embedder (free, local, no API key)
+# ---------------------------------------------------------------------------
+
+class OllamaEmbedder:
+    """Local embedding via Ollama. Uses httpx (sync, safe in event loop).
+
+    Recommended model: nomic-embed-text (274MB, 768-dim, multilingual)
+    Install: curl -fsSL https://ollama.com/install.sh | sh
+             ollama pull nomic-embed-text
+
+    Also supports bge-m3 (1.2GB, 1024-dim, best Chinese) for production.
+    """
+
+    def __init__(
+        self,
+        base_url: str = "http://localhost:11434",
+        model: str = "nomic-embed-text",
+        dim: int = 768,
+        cache_size: int = 2048,
+    ):
+        self._base_url = base_url.rstrip("/")
+        self._model = model
+        self._dim = dim
+        self._cache: dict[str, list[float]] = {}
+        self._cache_size = cache_size
+
+    def embed(self, text: str) -> list[float]:
+        """Synchronous embed via Ollama HTTP API. LRU-cached."""
+        if text in self._cache:
+            return self._cache[text]
+
+        import httpx
+        try:
+            url = f"{self._base_url}/api/embeddings"
+            resp = httpx.post(
+                url,
+                json={"model": self._model, "prompt": text},
+                timeout=30.0,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            vec = data["embedding"]
+
+            # LRU eviction
+            if len(self._cache) >= self._cache_size:
+                oldest = next(iter(self._cache))
+                del self._cache[oldest]
+            self._cache[text] = vec
+            return vec
+        except Exception:
+            return _hash_embed(text)
+
+    async def embed_batch(self, texts: list[str]) -> list[list[float]]:
+        """Async batch embed. Ollama doesn't support batch, so sequential."""
+        results = []
+        for text in texts:
+            results.append(self.embed(text))
+        return results
+
+
 def try_semantic_embedder() -> SemanticEmbedder | None:
     """Create a SemanticEmbedder if an EMBED-capable API key is available.
 
@@ -172,7 +233,29 @@ def try_semantic_embedder() -> SemanticEmbedder | None:
 
 
 def auto_upgrade_embedder() -> bool:
-    """Try to upgrade from hash embedder to semantic. Returns True if upgraded."""
+    """Try to upgrade from hash embedder to semantic.
+
+    Priority: Ollama (free, local) > OpenAI (cloud, needs key).
+    Returns True if upgraded.
+    """
+    # 1. Try Ollama first (free, zero config beyond install)
+    ollama_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+    ollama_model = os.getenv("OLLAMA_EMBED_MODEL", "nomic-embed-text")
+    import httpx
+    try:
+        # Quick health check — is Ollama running?
+        r = httpx.get(f"{ollama_url}/api/tags", timeout=3.0)
+        if r.status_code == 200:
+            oe = OllamaEmbedder(base_url=ollama_url, model=ollama_model)
+            # Verify the model is pulled by doing a test embed
+            test = oe.embed("test")
+            if len(test) > 10:  # real embedding, not hash fallback
+                set_embedder(oe.embed, dim=oe._dim)
+                return True
+    except Exception:
+        pass  # Ollama not available
+
+    # 2. Try OpenAI (needs OPENAI_API_KEY)
     sem = try_semantic_embedder()
     if sem:
         set_embedder(sem.embed, dim=sem._dim)
