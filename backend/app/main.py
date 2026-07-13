@@ -31,6 +31,7 @@ from .memory.reflection import run_reflection, schedule_reflection
 from .cognition.tools import TOOLS, SKILLS, _memory_search_handler
 from .cognition.react_loop import ReActLoop, ReActResult
 from .persona import build_system_prompt, load as load_persona, reload as reload_persona, version as persona_version
+from .persona.empathy import run_empathy_pipeline, analyze_user as empathy_analyze
 
 load_dotenv(override=True)
 
@@ -358,6 +359,33 @@ async def persona_view(reload: bool = False,
     }
 
 
+class EmpathyRequest(BaseModel):
+    message: str
+
+
+@app.post("/api/empathy/analyze")
+async def empathy_analyze_endpoint(req: EmpathyRequest,
+                                   x_api_key: str | None = Header(default=None)) -> dict:
+    """Debug endpoint — analyze a single message for emotion and intent.
+
+    Returns the UU emotional snapshot + IRG empathy guidance that would be
+    injected into the system prompt.
+    """
+    _auth(x_api_key)
+    snapshot, guidance = await run_empathy_pipeline(req.message, ROUTER)
+    return {
+        "message": req.message,
+        "emotion": snapshot.primary_emotion,
+        "intensity": snapshot.intensity,
+        "secondary_emotion": snapshot.secondary_emotion,
+        "dialogue_act": snapshot.dialogue_act,
+        "topic": snapshot.topic,
+        "confidence": snapshot.confidence,
+        "empathy_guidance": guidance,
+        "summary_zh": snapshot.to_zh(),
+    }
+
+
 @app.get("/api/engines")
 async def engines() -> dict:
     return {
@@ -389,12 +417,19 @@ async def chat(req: ChatRequest, x_api_key: str | None = Header(default=None)) -
     hits = MEMORY.retrieve(req.message, user_id=_resolve_user(x_api_key), k=6)
     context = "\n".join(f"- {h.node.content}" for h in hits)
 
+    # Empathy: UU analysis → IRG guidance
+    empathy_snapshot, empathy_guidance = await run_empathy_pipeline(
+        req.message, ROUTER,
+    )
+
     # Dispatch: System 1 vs System 2
     belief = BeliefState(user_id=_resolve_user(x_api_key))
     use_reasoner = needs_reasoner(req.role_hint or "chat", req.message, belief)
     complexity = Complexity.L3_DEEP if use_reasoner else Complexity.L2_DAILY
 
     system_prompt = build_system_prompt()
+    if empathy_guidance:
+        system_prompt += f"\n\n[当前互动]\n{empathy_guidance}"
     if context:
         system_prompt += f"\n\n[相关记忆]\n{context}"
 
@@ -551,11 +586,18 @@ async def chat_stream(req: ChatRequest,
         hits = MEMORY.retrieve(req.message, user_id=_resolve_user(x_api_key), k=6)
         context = "\n".join(f"- {h.node.content}" for h in hits)
 
+        # Empathy: UU analysis → IRG guidance
+        empathy_snapshot, empathy_guidance = await run_empathy_pipeline(
+            req.message, ROUTER,
+        )
+
         # Dispatch
         belief = BeliefState(user_id=_resolve_user(x_api_key))
         use_reasoner = needs_reasoner(req.role_hint or "chat", req.message, belief)
 
         system_prompt = build_system_prompt()
+        if empathy_guidance:
+            system_prompt += f"\n\n[当前互动]\n{empathy_guidance}"
         if context:
             system_prompt += f"\n\n[相关记忆]\n{context}"
 
