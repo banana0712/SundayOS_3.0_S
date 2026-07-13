@@ -165,13 +165,15 @@ CHAT_HTML = r"""<!DOCTYPE html>
     <button id="langZh" onclick="setLang('zh')">中文</button>
     <button id="langEn" onclick="setLang('en')">EN</button>
   </div>
-  <button class="hbtn" id="consoleBtn" onclick="toggleConsole()">📊</button>
+  <button class="hbtn" id="consoleBtn" onclick="toggleConsole()" title="切换视图">📊</button>
   <div class="conn"><span class="dot" id="dot"></span><span id="conntxt">…</span></div>
   <button class="hbtn" id="keyBtn">🔑</button>
 </header>
 <main id="main">
   <div class="wrap" id="wrap"></div>
   <div id="consoleView" style="display:none"></div>
+  <div id="memoryView" style="display:none"></div>
+  <div id="debugView" style="display:none"></div>
 </main>
 <footer id="chatFooter">
   <div class="status-bar" id="statusBar"></div>
@@ -259,7 +261,7 @@ $("expandBtn").onclick=toggleSidebar;
 async function refreshConvList(){
   if(!apiKey){$("conv-list").innerHTML=`<div class="sb-empty">${t("noConv")}</div>`;return}
   try{
-    const r=await fetch("/api/conversations?user_id=web",{headers:{"X-API-Key":apiKey}});
+    const r=await fetch("/api/conversations",{headers:{"X-API-Key":apiKey}});
     if(!r.ok){convList=[];renderConvList();return}
     const d=await r.json();convList=d.conversations||[];renderConvList();
   }catch(e){convList=[];renderConvList()}
@@ -347,28 +349,82 @@ async function send(){
   const typing=addMsg("ai","");
   typing.querySelector(".bubble").innerHTML='<span class="typing"><span></span><span></span><span></span></span>';
   try{
-    const body={message:text,user_id:"web"};
+    const body={message:text};
     if(convId)body.conversation_id=convId;
-    const r=await fetch("/api/chat",{method:"POST",
+
+    // Try SSE streaming first
+    const r=await fetch("/api/chat/stream",{method:"POST",
       headers:{"Content-Type":"application/json","X-API-Key":apiKey},
       body:JSON.stringify(body)});
-    typing.remove();
-    if(r.status===401){addMsg("ai",t("err401"),"",true);return}
-    const d=await r.json();
-    // remember conversation id
-    if(d.conversation_id&&!convId){convId=d.conversation_id}
-    const sysTag=d.system?`<span class="tag">${d.system==="reasoner"?t("deep"):t("fast")}</span>`:"";
-    const eng=d.engine?d.engine+" ":"";
-    const hasErr=d.trace&&d.trace.errors&&Object.keys(d.trace.errors).length>0;
-    const errTag=hasErr?`<span class="tag err">⚠ ${t("errEngine")}</span>`:"";
-    addMsg("ai",d.reply||t("errNet"),eng+sysTag+errTag,hasErr);
-    if(hasErr&&d.trace&&d.trace.errors){
-      // render per-engine error
-      const row=wrap.lastElementChild;
-      const errs=Object.entries(d.trace.errors).map(([eid,msg])=>`${eid}: ${msg}`).join(" · ");
-      const errDiv=document.createElement("div");
-      errDiv.className="err-detail";errDiv.textContent=errs;
-      row.appendChild(errDiv)}
+
+    if(r.status===401){typing.remove();addMsg("ai",t("err401"),"",true);sending=false;return}
+
+    if(r.ok && r.headers.get("content-type")?.includes("text/event-stream")){
+      // SSE streaming path
+      typing.remove();
+      const bubbleRow=addMsg("ai","");
+      const bubble=bubbleRow.querySelector(".bubble");
+      bubble.innerHTML="";
+      let metaBuilt=false,streamedText="",streamEngine="",streamSystem="";
+      const reader=r.body.getReader();
+      const decoder=new TextDecoder();
+      let buf="";
+      while(true){
+        const{value,done}=await reader.read();
+        if(done)break;
+        buf+=decoder.decode(value,{stream:true});
+        const lines=buf.split("\n");
+        buf=lines.pop()||"";
+        for(const line of lines){
+          if(!line.startsWith("data: "))continue;
+          try{
+            const d=JSON.parse(line.slice(6));
+            if(d.type==="done"){
+              if(d.conversation_id&&!convId)convId=d.conversation_id;
+              streamEngine=d.engine||"";streamSystem=d.system||"";
+            }else if(d.type==="text"){
+              streamedText+=d.content;
+              bubble.textContent=streamedText;
+            }else if(d.type==="thought"){
+              bubble.innerHTML+=`<div style="font-size:11px;color:var(--ter);margin:4px 0">💭 ${esc(d.content).substring(0,100)}</div>`;
+            }else if(d.type==="action"){
+              bubble.innerHTML+=`<div style="font-size:11px;color:var(--accent);margin:4px 0">🔧 ${esc(d.tool_name||"")}: ${esc((d.tool_input||"").substring(0,60))}</div>`;
+            }else if(d.type==="observation"){
+              bubble.innerHTML+=`<div style="font-size:11px;color:var(--success);margin:4px 0">📋 ${esc((d.content||"").substring(0,100))}</div>`;
+            }else if(d.type==="finish"){
+              streamedText=d.content||streamedText;
+              bubble.textContent=streamedText;
+            }else if(d.type==="error"){
+              bubble.textContent="Error: "+d.content;
+            }
+          }catch(e){/* skip bad JSON */}
+        }
+      }
+      bubble.textContent=streamedText||bubble.textContent;
+      // Build meta
+      const sysTag=streamSystem?`<span class="tag">${streamSystem==="reasoner"?t("deep"):t("fast")}</span>`:"";
+      const eng=streamEngine?streamEngine+" ":"";
+      const metaDiv=document.createElement("div");
+      metaDiv.className="meta";
+      metaDiv.innerHTML=eng+sysTag;
+      bubbleRow.appendChild(metaDiv);
+    }else{
+      // Fallback: non-streaming
+      const d=await r.json();
+      typing.remove();
+      if(d.conversation_id&&!convId)convId=d.conversation_id;
+      const sysTag=d.system?`<span class="tag">${d.system==="reasoner"?t("deep"):t("fast")}</span>`:"";
+      const eng=d.engine?d.engine+" ":"";
+      const hasErr=d.trace&&d.trace.errors&&Object.keys(d.trace.errors).length>0;
+      const errTag=hasErr?`<span class="tag err">⚠ ${t("errEngine")}</span>`:"";
+      addMsg("ai",d.reply||t("errNet"),eng+sysTag+errTag,hasErr);
+      if(hasErr&&d.trace&&d.trace.errors){
+        const row=wrap.lastElementChild;
+        const errs=Object.entries(d.trace.errors).map(([eid,msg])=>`${eid}: ${msg}`).join(" · ");
+        const errDiv=document.createElement("div");
+        errDiv.className="err-detail";errDiv.textContent=errs;
+        row.appendChild(errDiv)}
+    }
     // refresh sidebar
     if(convId)await refreshConvList();
   }catch(e){typing.remove();addMsg("ai",t("errNet"),"",true)}
@@ -396,21 +452,30 @@ function updateStatusBar(d){
     `<span>🧠 ${t("memories")}: ${memCount}</span>`+
     `<span>💬 ${t("convs")}: ${convCount}</span>`;
   // also refresh console view if visible
-  if(consoleMode) refreshConsole();
+  if(viewMode === 1) refreshConsole();
+  if(viewMode === 2) refreshMemory();
 }
 
-// ── console / dashboard toggle ──────────────────
-let consoleMode = false;
+// ── console / dashboard / memory toggle ─────────
+// 0 = chat, 1 = dashboard, 2 = memory
+let viewMode = 0;
 let healthCache = null;
+const VIEW_LABELS = ["📊", "🧠", "🔧", "💬"];  // labels shown on button
+const SUBTITLES = [t("subtitle"), "Console", "Memory"];
 
 function toggleConsole(){
-  consoleMode = !consoleMode;
-  $("consoleBtn").className = "hbtn" + (consoleMode ? " on" : "");
-  $("wrap").style.display = consoleMode ? "none" : "";
-  $("chatFooter").style.display = consoleMode ? "none" : "";
-  $("consoleView").style.display = consoleMode ? "" : "none";
-  $("subtitle").textContent = consoleMode ? "Console" : t("subtitle");
-  if(consoleMode) refreshConsole();
+  viewMode = (viewMode + 1) % 4;
+  $("consoleBtn").textContent = VIEW_LABELS[viewMode];
+  $("consoleBtn").className = "hbtn" + (viewMode > 0 ? " on" : "");
+  $("wrap").style.display = viewMode === 0 ? "" : "none";
+  $("chatFooter").style.display = viewMode === 0 ? "" : "none";
+  $("consoleView").style.display = viewMode === 1 ? "" : "none";
+  $("memoryView").style.display = viewMode === 2 ? "" : "none";
+  $("debugView").style.display = viewMode === 3 ? "" : "none";
+  $("subtitle").textContent = viewMode === 0 ? t("subtitle") : (["Console","Memory","Debug"][viewMode-1]||"");
+  if(viewMode === 1) refreshConsole();
+  if(viewMode === 2) refreshMemory();
+  if(viewMode === 3) refreshDebug();
 }
 
 async function refreshConsole(){
@@ -419,6 +484,7 @@ async function refreshConsole(){
     healthCache = await r.json();
   }catch(e){ healthCache = null }
   const engR = await fetch("/api/engines").then(r=>r.json()).catch(()=>({engines:[]}));
+  const skillR = await fetch("/api/skills",{headers:{"X-API-Key":apiKey}}).then(r=>r.json()).catch(()=>({skills:{},by_category:{},total:0}));
   const d = healthCache || {};
 
   const engCount = (d.engines||[]).length;
@@ -449,9 +515,9 @@ async function refreshConsole(){
         <div class="d-sub">多轮对话会话</div>
       </div>
       <div class="dash-card">
-        <div class="d-label">Endpoint</div>
-        <div class="d-val" style="color:#bf5af2;font-size:14px">/api/chat</div>
-        <div class="d-sub">认知引擎路由 + 双系统 + 护栏</div>
+        <div class="d-label">Skills</div>
+        <div class="d-val" style="color:#bf5af2">${skillR.total||0}</div>
+        <div class="d-sub">${Object.entries(skillR.by_category||{}).map(([k,v])=>k+": "+v).join(" · ")}</div>
       </div>
     </div>
     <div class="dash-section">
@@ -481,10 +547,185 @@ async function refreshConsole(){
         <tr><td>Reasoner ReAct 循环</td><td><span class="dash-badge warn">TODO</span></td><td>1→2</td></tr>
         <tr><td>L2 Reflection 反思</td><td><span class="dash-badge err">Not Started</span></td><td>2</td></tr>
         <tr><td>L4 共情计算</td><td><span class="dash-badge err">Not Started</span></td><td>2</td></tr>
-        <tr><td>L5 技能系统</td><td><span class="dash-badge err">Not Started</span></td><td>2</td></tr>
-        <tr><td>SSE 流式端点</td><td><span class="dash-badge err">Not Started</span></td><td>1</td></tr>
+        <tr><td>L5 技能系统</td><td><span class="dash-badge ok">Done</span></td><td>1</td></tr>
+        <tr><td>SSE 流式端点</td><td><span class="dash-badge ok">Done</span></td><td>1</td></tr>
       </table>
     </div>
+    <div class="dash-section">
+      <h3>Skills (${skillR.total||0})</h3>
+      <table class="dash-table">
+        <tr><th>Skill</th><th>Category</th><th>Risk</th></tr>
+        ${Object.entries(skillR.skills||{}).map(([name,s])=>`
+          <tr>
+            <td style="color:var(--accent)">${name}</td>
+            <td><span class="dash-badge info">${s.category}</span></td>
+            <td><span class="dash-badge ${s.risk==='low'?'ok':s.risk==='medium'?'warn':'err'}">${s.risk}</span></td>
+          </tr>`).join("")}
+      </table>
+    </div>
+  `;
+}
+
+// ── memory view ────────────────────────────────
+async function refreshMemory(){
+  // fetch stats
+  let stats = {};
+  try{
+    const r = await fetch("/api/memory/stats", {headers:{"X-API-Key":apiKey}});
+    if(r.ok) stats = await r.json();
+  }catch(e){}
+
+  // fetch reflections
+  let refs = [];
+  try{
+    const r = await fetch("/api/memory/reflections?limit=10", {headers:{"X-API-Key":apiKey}});
+    if(r.ok){ const d = await r.json(); refs = d.reflections || []; }
+  }catch(e){}
+
+  // fetch recent memories
+  let recents = [];
+  try{
+    const r = await fetch("/api/memory/search", {
+      method:"POST",
+      headers:{"Content-Type":"application/json","X-API-Key":apiKey},
+      body:JSON.stringify({query:"*",k:15})
+    });
+    if(r.ok){ const d = await r.json(); recents = d.results || []; }
+  }catch(e){}
+
+  const totalNodes = stats.total_nodes || 0;
+  const byType = stats.by_type || {};
+  const embedder = stats.embedder || "hash";
+  const dbType = stats.db_type || "memory";
+
+  $("memoryView").innerHTML = `
+    <div class="dash-grid">
+      <div class="dash-card" style="cursor:pointer" onclick="doReflect()">
+        <div class="d-label">Reflection (L2)</div>
+        <div class="d-val" style="color:#bf5af2;font-size:22px">${refs.length} insights</div>
+        <div class="d-sub">${refs.length ? 'Last: '+refs[0].content.substring(0,50)+'...' : 'Click to trigger reflection'}</div>
+      </div>
+      <div class="dash-card">
+        <div class="d-label">Episodic</div>
+        <div class="d-val" style="color:var(--accent)">${byType.episodic||0}</div>
+        <div class="d-sub">情景记忆</div>
+      </div>
+      <div class="dash-card">
+        <div class="d-label">Semantic</div>
+        <div class="d-val" style="color:#64d2ff">${byType.semantic||0}</div>
+        <div class="d-sub">语义/知识记忆</div>
+      </div>
+      <div class="dash-card">
+        <div class="d-label">DB / Embedder</div>
+        <div class="d-val" style="color:var(--success);font-size:14px">${dbType} + ${embedder}</div>
+        <div class="d-sub">Total: ${totalNodes} nodes</div>
+      </div>
+    </div>
+    <div class="dash-section">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+        <h3>Recent Memories (${recents.length})</h3>
+        <button class="hbtn" onclick="doReflect()" style="font-size:11px;padding:3px 8px">🔍 Reflect</button>
+        <button class="hbtn" onclick="doConsolidate()" style="font-size:11px;padding:3px 8px">🗑 Consolidate</button>
+      </div>
+      ${recents.length === 0 ? '<p style="color:var(--ter);font-size:12px;padding:12px 0">No memories yet. Chat with Sunday to create some!</p>' : ''}
+      <table class="dash-table">
+        <tr><th>Content</th><th>Type</th><th>Importance</th><th>Score</th><th>Time</th></tr>
+        ${recents.map(r=>`
+          <tr>
+            <td style="max-width:340px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.content.substring(0,80))}</td>
+            <td><span class="dash-badge info">${r.type}</span></td>
+            <td>${r.components ? Math.round(r.components.importance*10) : '?'}/10</td>
+            <td>${r.score ? r.score.toFixed(2) : '?'}</td>
+            <td style="font-size:10px;color:var(--ter)">${r.id ? 'mem_'+r.id.substring(4,10) : ''}</td>
+          </tr>`).join("")}
+      </table>
+    </div>
+    ${refs.length > 0 ? `
+    <div class="dash-section">
+      <h3>Reflection Insights (${refs.length})</h3>
+      ${refs.slice(0,5).map(r=>`
+        <div class="dash-card" style="margin-bottom:8px">
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+            <span class="dash-badge ok">insight</span>
+            <span style="font-size:10px;color:var(--ter)">${r.evidence_ids ? r.evidence_ids.length : 0} sources</span>
+          </div>
+          <p style="font-size:13px;color:var(--text);line-height:1.5">${esc(r.content)}</p>
+        </div>`).join("")}
+    </div>` : ''}
+    <p style="font-size:10px;color:var(--ter);padding:12px 16px">
+      L1 Storage (SQLite) ✅ &nbsp;|&nbsp; L2 Reflection (LLM) 🟡 &nbsp;|&nbsp; L3 Experience ❌
+    </p>
+  `;
+}
+
+async function doReflect(){
+  try{
+    $("memoryView").innerHTML = '<div class="dash-grid"><div class="dash-card"><div class="d-val" style="font-size:16px">Running reflection...</div></div></div>';
+    const r = await fetch("/api/memory/reflect", {
+      method:"POST",
+      headers:{"Content-Type":"application/json","X-API-Key":apiKey},
+      body:JSON.stringify({force:true})
+    });
+    const d = await r.json();
+    refreshMemory();
+  }catch(e){ refreshMemory(); }
+}
+
+async function doConsolidate(){
+  try{
+    const r = await fetch("/api/memory/consolidate", {
+      method:"POST",
+      headers:{"X-API-Key":apiKey}
+    });
+    refreshMemory();
+  }catch(e){}
+}
+
+// ── debug view ─────────────────────────────────
+async function refreshDebug(){
+  let ov={};
+  try{
+    const r=await fetch("/api/debug/overview",{headers:{"X-API-Key":apiKey}});
+    if(r.ok) ov=await r.json();
+  }catch(e){}
+
+  const checks=ov.checks||{};
+  const ckIcon=v=>v?"✅":"❌";
+
+  $("debugView").innerHTML=`
+    <div class="dash-section"><h3>System Checks</h3>
+      <table class="dash-table">
+        <tr><td>DB Accessible</td><td>${ckIcon(checks.db_accessible)}</td></tr>
+        <tr><td>Engines Available</td><td>${ckIcon(checks.engines_available)}</td></tr>
+        <tr><td>Memory Working</td><td>${ckIcon(checks.memory_working)}</td></tr>
+      </table>
+    </div>
+    <div class="dash-grid">
+      <div class="dash-card"><div class="d-label">Python</div><div class="d-val" style="font-size:13px">${ov.server?.python?.split(" ")[0]||"?"}</div></div>
+      <div class="dash-card"><div class="d-label">Engines</div><div class="d-val" style="color:var(--accent)">${ov.engines?.count||0}</div><div class="d-sub">${(ov.engines?.list||[]).join(", ")}</div></div>
+      <div class="dash-card"><div class="d-label">Memory (${ov.memory?.db_type||"?"})</div><div class="d-val" style="color:#64d2ff">${ov.memory?.total_nodes||0}</div><div class="d-sub">${ov.memory?.embedder||"?"} embedder</div></div>
+      <div class="dash-card"><div class="d-label">Tools</div><div class="d-val" style="color:#bf5af2">${ov.tools?.count||0}</div><div class="d-sub">${(ov.tools?.list||[]).map(t=>t.name+"("+t.risk+")").join(", ")}</div></div>
+    </div>
+    <div class="dash-section"><h3>Usage</h3>
+      <table class="dash-table">
+        <tr><th>Metric</th><th>Value</th></tr>
+        <tr><td>Messages Today</td><td>${ov.usage?.messages_today||0}</td></tr>
+        <tr><td>API Calls</td><td>${ov.usage?.calls_today||0}</td></tr>
+        <tr><td>Tokens Used</td><td>${ov.usage?.tokens_today||0}</td></tr>
+        <tr><td>Cost Today</td><td>$${ov.usage?.cost_today||0}</td></tr>
+        <tr><td>Avg Latency</td><td>${ov.usage?.avg_latency_ms||0}ms</td></tr>
+      </table>
+    </div>
+    <div class="dash-section"><h3>Memory by Type</h3>
+      <table class="dash-table">
+        <tr><th>Type</th><th>Count</th></tr>
+        ${Object.entries(ov.memory?.by_type||{}).map(([k,v])=>`
+          <tr><td>${k}</td><td>${v}</td></tr>`).join("")}
+      </table>
+    </div>
+    <p style="font-size:10px;color:var(--ter);padding:12px 16px">
+      🔧 Debug View — <a href="/docs" target="_blank" style="color:var(--accent)">Swagger UI /docs</a> · <a href="/api/debug/env" style="color:var(--accent)">Env Diagnostic</a>
+    </p>
   `;
 }
 

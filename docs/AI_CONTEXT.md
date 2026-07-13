@@ -42,7 +42,10 @@ SundayOS/
 │   ├── adr/                   #   架构决策记录（ADR 索引）
 │   ├── guides/                #   使用与操作手册
 │   │   ├── BACKEND_USAGE.md   #     后端运行/配置/排错
-│   │   └── DEPLOY_RAILWAY.md  #     Railway 部署指南
+│   │   ├── DEPLOY_RAILWAY.md  #     Railway 部署指南
+│   │   ├── DEBUGGING.md       #     ★ 全功能调试说明书（排错先看这个）
+│   │   ├── SHORTCUTS_SETUP.md  #     iPhone 快捷指令 + Siri 接入指南
+│   │   └── DEPLOY_SERVER.md    #     云服务器部署指南（小兔云/阿里云等）
 │   └── 3.0/                   #   实现级技术规范（13 文档 + 10 ADR）
 ├── backend/                   # FastAPI 参考实现（Python 3.11+）
 ├── console/                   # Next.js 15 Web 控制台（前端原型）
@@ -72,6 +75,7 @@ SundayOS/
 | 设计 UI/UX | DESIGN_SYSTEM.md | console/src/app/globals.css · tailwind.config.ts |
 | 写测试 | CURRENT_STATE.md §3 | backend/tests/ 现有测试 |
 | 部署/运维 | docs/guides/DEPLOY_RAILWAY.md · docs/guides/BACKEND_USAGE.md | — |
+| 调试/排错 | **docs/guides/DEBUGGING.md**（第一个看这个） | /health · /api/debug/env · /docs |
 | 安全审查 | ARCHITECTURE.md §6 · PROJECT_MEMORY.md §4 | docs/3.0/08-security-and-autonomy.md |
 | 新成员入职 | 本文件 → CURRENT_STATE.md → ARCHITECTURE.md | SUNDAY_CONTEXT.md（理解理念） |
 

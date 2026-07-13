@@ -10,6 +10,7 @@ pydantic-settings==2.7.0
 # Engines (optional at runtime — imported lazily; MockProvider needs none)
 openai==1.58.1          # DeepSeek / Qwen / Ling / OpenAI / local vLLM (OpenAI-compatible)
 anthropic==0.42.0       # Claude
+chromadb>=0.5.0          # Vector storage (semantic search)
 
 # Utils
 python-dotenv==1.0.1

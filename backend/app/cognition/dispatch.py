@@ -7,10 +7,13 @@ import re
 from .belief import BeliefState
 
 _INTENT_REASONER = {"plan", "code", "analyze", "research", "multi_step"}
-_TOOL_RE = re.compile(r"(搜索|查一下|查询|发邮件|提交|运行|计算|规划|安排|日程|提醒|"
-                      r"search|run|commit|schedule|plan|calculate|book)")
+_TOOL_RE = re.compile(r"(搜索|查一下|查一查|帮我查|查询|发邮件|提交|运行|计算|算一下|算一算|"
+                      r"规划|安排|日程|提醒|翻译|天气|几点了|几点|今天几|星期几|日期|"
+                      r"读一下|读取|打开文件|写一下|写入|保存|记下来|"
+                      r"说过|记得|之前|以前|原来|告诉过|"
+                      r"search|run|commit|schedule|plan|calculate|book|weather|translate)")
 _RISK_RE = re.compile(r"(删除|删掉|支付|付款|转账|权限|delete|drop|pay|purchase|rm -rf)")
-_STEP_RE = re.compile(r"(然后|接着|之后|first|then|after that|step \d|步骤|再|最后)")
+_STEP_RE = re.compile(r"(然后|接着|之后|first|then|after that|step \d|步骤|再|最后|顺便|同时)")
 
 
 class Risk:

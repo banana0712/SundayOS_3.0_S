@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import {
   MessageSquare,
@@ -36,18 +37,49 @@ const fade: Variants = {
 
 export function DashboardView() {
   const { t } = useI18n();
+  const [stats, setStats] = useState<Record<string, unknown> | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    const fetchStats = async () => {
+      try {
+        const r = await fetch("/api/stats/dashboard");
+        if (r.ok && alive) setStats(await r.json());
+      } catch { /* backend may not have this endpoint yet */ }
+    };
+    fetchStats();
+    const id = setInterval(fetchStats, 15000);
+    return () => { alive = false; clearInterval(id); };
+  }, []);
+
+  const live = stats !== null;
+  const metrics = buildMetrics(stats);
+
   return (
     <div className="mx-auto max-w-[1400px] px-6 py-6">
       {/* Header */}
       <motion.div variants={fade} custom={0} initial="hidden" animate="show" className="mb-6">
-        {/* Demo data banner */}
-        <div className="mb-4 rounded-[12px] border border-[color:var(--warning)]/30 bg-[color:var(--warning)]/10 px-4 py-2.5 text-[12px] text-warning">
-          ⚠️ 演示数据 · Demo Data — 数据来自本地模拟，非真实后端状态。Numbers are simulated, not live backend data.
+        {/* Data source banner */}
+        <div className={cn(
+          "mb-4 rounded-[12px] border px-4 py-2.5 text-[12px]",
+          live
+            ? "border-[color:var(--success)]/30 bg-[color:var(--success)]/10 text-success"
+            : "border-[color:var(--warning)]/30 bg-[color:var(--warning)]/10 text-warning"
+        )}>
+          {live
+            ? `● 实时数据 · Live — ${stats?.messages_today ?? 0} messages, ${stats?.memory_nodes ?? 0} memories, ${stats?.conv_count ?? 0} conversations`
+            : "⚠️ 演示数据 · Demo Data — 数据来自本地模拟，非真实后端状态。"}
         </div>
         <div className="flex items-center gap-2 text-caption text-tertiary">
           <span className="relative flex h-1.5 w-1.5">
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-success opacity-60" />
-            <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-success" />
+            <span className={cn(
+              "absolute inline-flex h-full w-full rounded-full opacity-60",
+              live ? "animate-ping bg-success" : "animate-ping bg-success"
+            )} />
+            <span className={cn(
+              "relative inline-flex h-1.5 w-1.5 rounded-full",
+              live ? "bg-success" : "bg-success"
+            )} />
           </span>
           {t("dash.overview")}
         </div>
@@ -58,7 +90,7 @@ export function DashboardView() {
 
       {/* Metric grid */}
       <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-4">
-        {METRICS.map((m, i) => (
+        {metrics.map((m, i) => (
           <motion.div key={m.key} variants={fade} custom={i + 1} initial="hidden" animate="show">
             <MetricCard labelKey={m.key} value={m.value} delta={m.delta} icon={m.icon} color={m.color} data={m.data} />
           </motion.div>
@@ -95,16 +127,19 @@ export function DashboardView() {
 const spark = (seed: number) =>
   Array.from({ length: 16 }, (_, i) => 40 + Math.sin(i / 2 + seed) * 18 + (i % 3) * 6 + seed * 2);
 
-const METRICS = [
-  { key: "dash.metric.messages", value: "1,284", delta: +12.4, icon: MessageSquare, color: "var(--accent)", data: spark(1) },
-  { key: "dash.metric.calls", value: "3,921", delta: +6.1, icon: Sparkles, color: "#5e5ce6", data: spark(2) },
-  { key: "dash.metric.tokens", value: "1.42M", delta: +18.9, icon: Coins, color: "#bf5af2", data: spark(3) },
-  { key: "dash.metric.cost", value: "$8.74", delta: -3.2, icon: TrendingUp, color: "var(--success)", data: spark(1.5) },
-  { key: "dash.metric.memories", value: "48,301", delta: +2.0, icon: Database, color: "#64d2ff", data: spark(4) },
-  { key: "dash.metric.latency", value: "412ms", delta: -8.7, icon: Timer, color: "var(--warning)", data: spark(2.5) },
-  { key: "dash.metric.tools", value: "11", delta: 0, icon: Wrench, color: "#ff9f0a", data: spark(3.2) },
-  { key: "dash.metric.success", value: "99.2%", delta: +0.4, icon: CheckCircle2, color: "var(--success)", data: spark(0.5) },
-] as const;
+function buildMetrics(s: Record<string, unknown> | null) {
+  const live = s !== null;
+  return [
+    { key: "dash.metric.messages", value: live ? String(s?.messages_today ?? 0) : "—", delta: 0, icon: MessageSquare, color: "var(--accent)", data: spark(1) },
+    { key: "dash.metric.calls", value: live ? String(s?.model_calls ?? 0) : "—", delta: 0, icon: Sparkles, color: "#5e5ce6", data: spark(2) },
+    { key: "dash.metric.tokens", value: live ? String(s?.tokens_used ?? 0) : "—", delta: 0, icon: Coins, color: "#bf5af2", data: spark(3) },
+    { key: "dash.metric.cost", value: live && s?.cost_today !== undefined ? `$${(s.cost_today as number).toFixed(4)}` : "—", delta: 0, icon: TrendingUp, color: "var(--success)", data: spark(1.5) },
+    { key: "dash.metric.memories", value: live ? String(s?.memory_nodes ?? 0) : "—", delta: 0, icon: Database, color: "#64d2ff", data: spark(4) },
+    { key: "dash.metric.latency", value: live && s?.avg_latency_ms !== undefined ? `${Math.round(s.avg_latency_ms as number)}ms` : "—", delta: 0, icon: Timer, color: "var(--warning)", data: spark(2.5) },
+    { key: "dash.metric.tools", value: live ? String(s?.active_tools ?? 0) : "—", delta: 0, icon: Wrench, color: "#ff9f0a", data: spark(3.2) },
+    { key: "dash.metric.success", value: "—", delta: 0, icon: CheckCircle2, color: "var(--success)", data: spark(0.5) },
+  ] as const;
+}
 
 function MetricCard({
   labelKey,

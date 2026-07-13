@@ -10,6 +10,7 @@ import { CommandPalette } from "./command-palette";
 import { ChatView } from "@/components/views/chat";
 import { DashboardView } from "@/components/views/dashboard";
 import { BrainView } from "@/components/views/brain";
+import { MemoryView } from "@/components/views/memory";
 import { ComingSoon } from "@/components/views/coming-soon";
 import { NAV } from "@/config/nav";
 import { AnimatePresence, motion } from "framer-motion";
@@ -20,6 +21,7 @@ function ViewRouter() {
   if (view === "") content = <ChatView />;
   else if (view === "dashboard") content = <DashboardView />;
   else if (view === "brain") content = <BrainView />;
+  else if (view === "memory") content = <MemoryView />;
   else {
     const item = NAV.find((n) => n.slug === view);
     content = <ComingSoon title={item?.label ?? view} />;

@@ -59,7 +59,7 @@ export function ChatView() {
 
   const fetchConvs = useCallback(async () => {
     try {
-      const r = await fetch("/api/conversations?user_id=me");
+      const r = await fetch("/api/conversations");
       if (r.ok) {
         const d = await r.json();
         setConvs(d.conversations || []);
@@ -113,32 +113,78 @@ export function ChatView() {
     setInput("");
     setSending(true);
     try {
-      const body: Record<string, unknown> = { message: text, user_id: "me" };
+      const body: Record<string, unknown> = { message: text };
       if (convId) body.conversation_id = convId;
-      const r = await fetch("/api/chat", {
+      const r = await fetch("/api/chat/stream", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
+
       if (r.status === 502) {
         setMsgs((m) => [...m, { id: idRef.current++, role: "assistant", text: t("chat.err.offline") }]);
         setOnline(false);
+        setSending(false);
         return;
       }
-      const d = await r.json();
-      const reply: string = d.reply ?? t("chat.err.generic");
-      // remember conversation id for subsequent messages
-      if (d.conversation_id && !convId) {
-        setConvId(d.conversation_id);
-        fetchConvs();  // refresh list to show the new conversation
-      } else if (convId) {
-        fetchConvs();  // update message count in sidebar
+
+      // SSE streaming
+      const contentType = r.headers.get("content-type") || "";
+      if (r.ok && contentType.includes("text/event-stream")) {
+        const reader = r.body?.getReader();
+        if (!reader) throw new Error("no reader");
+        const decoder = new TextDecoder();
+        const msgId = idRef.current++;
+        // Placeholder message that gets updated
+        setMsgs((m) => [...m, { id: msgId, role: "assistant", text: "" }]);
+        let buf = "";
+        let streamedText = "";
+        const updateMsg = (partial: Partial<Msg>) => {
+          setMsgs((m) => m.map(msg => msg.id === msgId ? { ...msg, ...partial } : msg));
+        };
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buf += decoder.decode(value, { stream: true });
+          const lines = buf.split("\n");
+          buf = lines.pop() || "";
+          for (const line of lines) {
+            if (!line.startsWith("data: ")) continue;
+            try {
+              const d = JSON.parse(line.slice(6));
+              if (d.type === "done") {
+                if (d.conversation_id && !convId) setConvId(d.conversation_id);
+                updateMsg({ engine: d.engine, system: d.system });
+                fetchConvs();
+              } else if (d.type === "text") {
+                streamedText += d.content;
+                updateMsg({ text: streamedText });
+              } else if (d.type === "finish") {
+                streamedText = d.content || streamedText;
+                updateMsg({ text: streamedText });
+              } else if (d.type === "thought" || d.type === "action" || d.type === "observation") {
+                // Append step marker to text
+                const marker = d.type === "thought" ? "\n💭 "
+                  : d.type === "action" ? "\n🔧 " : "\n📋 ";
+                streamedText += marker + (d.content || "").substring(0, 80);
+                updateMsg({ text: streamedText });
+              } else if (d.type === "error") {
+                streamedText += "\n⚠ " + d.content;
+                updateMsg({ text: streamedText });
+              }
+            } catch { /* skip bad JSON */ }
+          }
+        }
+        if (!streamedText) updateMsg({ text: t("chat.err.generic") });
+      } else {
+        // Fallback: regular JSON response
+        const d = await r.json();
+        const reply: string = d.reply ?? t("chat.err.generic");
+        if (d.conversation_id && !convId) { setConvId(d.conversation_id); fetchConvs(); }
+        else if (convId) { fetchConvs(); }
+        const isMock = typeof d.engine === "string" && d.engine.startsWith("mock");
+        setMsgs((m) => [...m, { id: idRef.current++, role: "assistant", text: reply, engine: d.engine, system: d.system, mock: isMock }]);
       }
-      const isMock = typeof d.engine === "string" && d.engine.startsWith("mock");
-      setMsgs((m) => [
-        ...m,
-        { id: idRef.current++, role: "assistant", text: reply, engine: d.engine, system: d.system, mock: isMock },
-      ]);
     } catch {
       setMsgs((m) => [...m, { id: idRef.current++, role: "assistant", text: t("chat.err.generic") }]);
     } finally {

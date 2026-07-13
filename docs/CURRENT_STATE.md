@@ -11,10 +11,10 @@
 ```
 文档体系     ✅ 7 文件工程文档体系（AI_CONTEXT / ARCHITECTURE / CURRENT_STATE / ROADMAP / DESIGN_SYSTEM / PROJECT_MEMORY）+ AGENTS + CLAUDE + SUNDAY_CONTEXT
 3.0 设计集   ✅ 13 技术规范 + 11 ADR（001-011）+ 论文附录
-后端实现     🟡 Phase 1 ~45%：引擎路由✅ 记忆检索✅ 双系统判据✅ 护栏✅ Chat UI✅ 诊断✅
-             28 测试全过（0.04s，纯离线）。记忆仅内存、ReAct 未接、反思未实现、无 SSE 流式
-前端实现     🟡 Dashboard + Brain Viz + ⌘K 原型（Next.js 15，纯前端，数据全是 mock）
-iPhone 集成  📄 仅设计（1.0 Shortcuts 方案文档）
+后端实现     🟡 Phase 1 ~85%：引擎路由✅ 记忆持久化✅ 反思✅ ReAct✅ SSE✅ 护栏✅ Chat UI✅
+             63 测试全过（0.8s）。记忆 SQLite 持久化、ReAct 循环完整、SSE 流式运行中
+前端实现     🟡 Dashboard 实时数据 + Brain Viz + Memory Center + Chat 流式（Next.js 15）
+iPhone 集成  🟡 API 就绪（`/api/shortcuts/chat`）+ Shortcuts 配置文档，待真机验证
 Git 状态     干净，main 分支，与 origin/main 同步
 ```
 
@@ -58,6 +58,59 @@ Git 状态     干净，main 分支，与 origin/main 同步
 | LLM 安全分类器 | 护栏缺少基于 LLM 的语义级 moderation | 🟡 中 | Phase 1 收尾 |
 | Ollama 本地引擎 | Provider 已定义但需手动配置 | 🟢 低 | Phase 4 |
 | 人格系统（初始化+演化+锚定） | 人格是固定的 system prompt | 🟢 低 | Phase 3 |
+
+---
+
+## 2.5 记忆系统专项报告
+
+> 记忆是 Sunday 身份的**首要来源**。引擎可换，记忆不可失。以下基于 Generative Agents (UIST 2023) 和 From Storage to Experience (2026) 论文的三层递进架构。
+
+### 已实现（L1 Storage 层 100%）
+
+| # | 功能 | 代码位置 | 状态 |
+|---|------|---------|------|
+| 1 | 复合评分检索 recency×importance×relevance | `memory/store.py` | ✅ |
+| 2 | MemoryNode 五类型 schema (EPISODIC/SEMANTIC/PROCEDURAL/REFLECTION/EXPERIENCE) | `memory/schema.py` | ✅ |
+| 3 | 有效重要性 30 天半衰期衰减 | `memory/schema.py:effective_importance()` | ✅ |
+| 4 | SQLite 持久化（重启不失忆） | `memory/sqlite_store.py` | ✅ |
+| 5 | ChromaDB 向量存储（嵌入式模式，零外部服务） | `memory/vector_store.py` | ✅ |
+| 6 | LLM 重要性 1-10 自动打分（Generative Agents prompt） | `memory/importance.py` | ✅ |
+| 7 | 可插拔 embedder（hash 默认，OpenAI/DeepSeek 可切换） | `memory/embedding.py` | ✅ |
+| 8 | 记忆归档 (archive_expired) | `memory/sqlite_store.py` | ✅ |
+| 9 | 记忆 CRUD API (store/search/delete) | `main.py` | ✅ |
+| 10 | 记忆统计 API (stats) + 记忆巩固 API (consolidate) | `main.py` | ✅ |
+| 11 | 会话管理 (ConversationStore) | `conversation/store.py` | ✅ |
+
+### 未实现（L2-L3 层）
+
+| # | 功能 | 严重度 | 论文依据 | 计划 |
+|---|------|--------|---------|------|
+| 1 | **反思引擎 (L1→L2)**：两步生成流程（生成高层问题 → 检索 → 综合 Insight） | 🔴 高 | Generative Agents §Reflection | Phase 1 收尾 |
+| 2 | **体验抽象 (L2→L3)**：跨轨迹归纳、程序原语封装、混合体验循环 | 🟡 中 | From Storage to Experience §Experience | Phase 3 |
+| 3 | **记忆巩固（定时）**：相似记忆合并(>0.92)、过期归档、语义知识提取 | 🟡 中 | Memory System §4.7 | Phase 2 |
+| 4 | **语义 Embedding**：当前用 hash，中文检索不准。需 OpenAI Key 或 Ollama 本地模型 | 🟡 中 | ADR-010 | 待 API Key |
+| 5 | **ChromaDB 语义搜索接入**：向量存储代码就绪，待语义 embedder 激活后启用 | 🟡 中 | — | 依赖 #4 |
+| 6 | **反思递归**：反思可基于其他反思形成抽象树 | 🟢 低 | Generative Agents | Phase 2 |
+| 7 | **GitHub 真源同步**：稳定画像/偏好版本化在 Git | 🟢 低 | ADR-009 | Phase 3 |
+| 8 | **隐私感知标记**：敏感记忆标记 + E2E 加密 | 🟢 低 | Memory System §4.9 | Phase 2-4 |
+| 9 | **四类记忆衰减协同**：情景/语义/程序/工作独立衰减策略 | 🟢 低 | Memory System §4.2 | Phase 2 |
+| 10 | **偏好感知更新**：滑动窗口 + 显著性检验避免过拟合 | 🟢 低 | XiaoIce §长期建模 | Phase 3 |
+
+### 存储状态
+
+| 层 | 当前方案 | 生产方案 |
+|----|---------|---------|
+| 向量 | ChromaDB（已就绪，待语义 embedder） | Milvus/Pinecone |
+| 结构化 | SQLite（✅ 运行中） | Postgres |
+| 工作记忆 | 进程内 / SQLite | Redis |
+| 原始轨迹 | SQLite（✅ 运行中） | S3 + Postgres |
+
+### 当前已知限制
+
+- ❌ 嵌入用 hash 而非语义模型 → 中文检索靠大字符切分，相关性有限
+- ❌ 反思需手动触发（`POST /api/memory/reflect`），无自动定时机制
+- ❌ ChromaDB 已装好但暂未接入 SQLite 写入流程（两套存储独立）
+- ❌ 记忆管理面板仅在 webchat Console 有雏形，console Memory Center 待实现
 
 ---
 
@@ -127,9 +180,11 @@ Git 状态     干净，main 分支，与 origin/main 同步
 
 ## 6. 当前阻塞
 
-1. **记忆持久化**——所有记忆在内存，重启即失。这阻塞了"身份连续性"这一核心理念的验证。
-2. **ReAct 循环未实现**——系统2 目前只是"路由到强引擎直接回答"，不是真正的多步推理 Agent。阻塞了"Sunday 能做事"的验证。
-3. **前端未接后端**——前端 Dashboard/Brain 的可视化是纯 mock，无法反映真实心智状态。
+> 记忆持久化已解决（SQLite）。以下为剩余阻塞项：
+
+1. **反思引擎**——记忆只有存储，没有理解。阻塞四角色质变。
+2. **ReAct 循环未实现**——系统2 目前只是"路由到强引擎直接回答"，不是真正的多步推理 Agent。
+3. **语义 Embedding 缺失**——中文记忆检索精度有限，依赖 hash 大字符切分。
 
 ---
 
@@ -139,8 +194,8 @@ Git 状态     干净，main 分支，与 origin/main 同步
 |------|---------|
 | Python | 3.11+（已验证 3.14） |
 | Node | 已装（npm） |
-| 数据库 | ❌ 无（仅内存，SQLite+Chroma 待接） |
-| API Keys | 未配（mock 模式运行） |
+| 数据库 | ✅ SQLite（sunday.db），ChromaDB（chroma_db/） |
+| API Keys | DeepSeek 已配（真实引擎），OpenAI/Anthropic 待配 |
 | Railway | 已配部署（Procfile + railway.json + CORS） |
 | Git remote | origin/main ← GitHub |
 
