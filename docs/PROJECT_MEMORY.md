@@ -2,7 +2,7 @@
 
 > 记录所有已完成的重大设计决策、技术选型和架构选择。这不是 ADR 的替代——ADR 记录「决策与理由」的过程，本文档是你快速查阅「我们做了什么决定」的索引。每个决策引用其 ADR 正文。
 
-**版本** 1.0 · **最后更新** 2026-07-13
+**版本** 2.0 · **最后更新** 2026-07-15
 
 ---
 
@@ -20,7 +20,11 @@
 | 8 | ★ 认知引擎抽象层 | 统一 Provider 接口 + 五维动态路由（模型即引擎，可替换） | [008](3.0/adr/008-cognitive-engine-layer.md) |
 | 9 | GitHub 真源 | 人格/技能/偏好版本化在 Git，运行时加载 | [009](3.0/adr/009-github-source-of-truth.md) |
 | 10 | 本地零配置起步 | SQLite+ChromaDB 零外部服务起步，生产栈文档化 | [010](3.0/adr/010-local-first-storage.md) |
-| 11 | 文档驱动上下文体系 | 三层文档体系 + 活文档纪律，聊天历史不可靠 | [011](adr/011-context-system.md) |
+| 11 | 文档驱动上下文体系 | 三层文档体系 + 活文档纪律 | [011](adr/011-context-system.md) |
+| 12 | ★ 质量优先路由 | L2 日常对话质量权重 40%、成本 10%（豆包 primary） | [ADR-011](adr/ADR-011-quality-first-routing.md) |
+| 13 | ★ 反馈学习系统 | NL 反馈 → LLM 解析 → 偏好注入 prompt（PLUS/VAC 范式） | [ADR-012](adr/ADR-012-feedback-learning-system.md) |
+| 14 | 用户账号系统 | 注册/登录/Token 双轨制 + pbkdf2 密码哈希 | 本文件 §2.9 |
+| 15 | 自然多气泡消息 | burst_split 自然段落下发，活人聊天节奏（Stephanie NAACL 2025） | 本文件 §2.10 |
 
 ---
 
@@ -90,6 +94,61 @@
 
 **当前限制**：
 - LLM 安全分类器（语义级 moderation）未实现，当前只有规则匹配
+
+### 2.9 用户账号系统（2026-07-15）
+
+**我们做了什么**：
+- 新建 `app/auth/__init__.py`：UserStore (SQLite) + pbkdf2_sha256 密码哈希（stdlib，零新依赖）
+- `POST /api/auth/register` + `/api/auth/login` + `/api/auth/me`
+- 双轨认证：Token first（webchat/console 登录），API Key fallback（Siri Shortcuts / curl）
+- Webchat 登录/注册卡片替换 `prompt()` 弹窗
+- Token 存 localStorage（`sunday.token`），跨页面自动登录
+
+**为什么这样做**：
+- 单 KEY 无法多用户 → 每人独立账号/记忆/对话/偏好
+- 手机端每次输入 KEY 体验极差 → 登录一次，Token 记住
+- 推广给朋友：注册 → 独立空间
+
+### 2.10 质量优先路由（ADR-011 · 2026-07-15）
+
+**我们做了什么**：
+- `EngineCapabilities` 新增 `quality`（0.0-1.0）和 `primary`（bool）字段
+- 路由权重表重写：L2 日常对话质量权重从 0.0 → 0.40，成本从 0.40 → 0.10
+- 打分公式：`score = w_qual*quality + w_cap*capability - w_cost*norm_cost - w_lat*norm_lat + w_avail*1.0`
+- 自定义引擎（豆包）标记 quality=0.85, primary=True
+
+**为什么这样做**：
+- 之前成本优先 → 免费引擎永远排第一，即使质量差
+- 陪伴型 AI 的体验由质量决定，不是成本
+- 论文依据：FutureAGI 2026 Quality-Aware Routing、Microsoft Foundry Model Router
+
+### 2.11 反馈驱动的偏好学习（ADR-012 · 2026-07-15）
+
+**我们做了什么**：
+- `app/persona/preferences.py`：每用户偏好档案 + SQLite 存储
+- `app/persona/feedback_parser.py`：LLM 解析自然语言反馈 → 结构化偏好
+- `app/persona/__init__.py`：`build_prompt_with_prefs()` 每次聊天自动注入偏好块
+- Webchat 👍👎 UI + 👎 文字反馈
+- 三层数据架构：L1 个人（隔离）· L2 群体（匿名共享）· L3 全局（引擎质量等公共知识）
+
+**为什么这样做**：
+- 传统 RLHF 是"平均人"的偏好 → 没有人是平均用户（DeepMind 2025）
+- 自然语言反馈比标量评分好 6-13%（VAC 2026）
+- 个性化偏好文本注入 prompt 比默认模型 win rate 高 72%（PLUS ICLR 2026）
+- 80% 的"回答不好"不是引擎不行，是 prompt 不够精准
+
+### 2.12 自然多气泡消息（2026-07-15）
+
+**我们做了什么**：
+- `app/cognition/burst_split.py`：纯启发式自然段落/句子切割（~0.1ms）
+- 前端：流式完整内容 → done 事件返回 bursts 数组 → 替换为多气泡动画
+- 随机延迟（300-900ms）+ 打字指示符 → 活人聊天节奏
+- 无字数上限，段落边界不可合并，短回复不被拆碎
+
+**为什么这样做**：
+- Stephanie (NAACL 2025)：Step-by-step 对话比单块回复参与度更高
+- 人类聊天不会把 300 字塞进一个气泡
+- "正在输入…"动画 + 多气泡节奏 = 活人感
 
 ### 2.5 本地零配置存储（ADR-010）
 
@@ -173,15 +232,14 @@
 
 | 债务 | 严重度 | 为什么允许 | 计划何时还 |
 |------|--------|-----------|-----------|
-| 记忆仅在内存 | 🔴 高 | Phase 1 骨架验证核心逻辑优先；MemoryStore 接口已就绪，换存储零改上层 | Phase 1 收尾（下一步） |
-| Reasoner 不做 ReAct | 🔴 高 | 双系统判据本身已可验证切换逻辑；ReAct 需要工具生态奠基 | Phase 1→2 过渡 |
-| 意图/情感是关键词启发式 | 🟡 中 | 验证判据框架优先于精度；LLM 分类器已留接口 | Phase 1 收尾 |
-| 前端数据全是 mock | 🟡 中 | 先验证设计与交互；后端 API 已就绪，对接是接线工作 | Phase 1 收尾 |
-| 无前端自动化测试 | 🟡 中 | 前端仍在原型阶段，频繁重构；稳定后补 | Phase 2 |
-| BeliefState 每次重建 | 🟢 低 | 当前缺少持久化基础，持久化后会一并解决 | Phase 2 |
-| 嵌入用 hash 而非模型 | 🟢 低 | 可插拔设计，生产环境一行 `set_embedder()` 替换 | Phase 2 |
-| 无多用户隔离 | 🟢 低 | 当前个人使用场景，生产化时加 | Phase 4 |
-| 无速率限制 | 🟢 低 | 同上 | Phase 4 |
+| Token 无过期/无登出 | 🟡 中 | 个人使用场景风险低；需增加数据库迁移 | 下次 |
+| 无撞库保护 | 🟡 中 | 同上 | 部署公网前 |
+| main.py 未拆分（~1100 行） | 🟡 中 | FastAPI Router 拆分工作量大但零功能影响 | 下次 |
+| 前端数据全是 mock | 🟡 中 | 后端 API 已就绪，对接是接线工作 | 下次 |
+| 无前端自动化测试 | 🟡 中 | 前端仍在原型阶段 | Phase 2 |
+| 嵌入用 hash 而非模型 | 🟢 低 | 可插拔设计，一行 `set_embedder()` 替换 | Phase 2 |
+| 3 个独立 SQLite 连接 | 🟢 低 | 稳定运行中；合并需重构 Memory/User/Pref Store | Phase 2 |
+| 无速率限制 | 🟢 低 | 个人使用 | Phase 4 |
 
 ---
 
@@ -228,7 +286,7 @@
 5. `git commit -m "release: vX.Y.Z"`
 6. `git push origin main`
 
-当前版本：`0.7.0`
+当前版本：`0.8.0`
 
 ---
 

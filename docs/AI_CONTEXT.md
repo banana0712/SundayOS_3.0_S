@@ -2,7 +2,7 @@
 
 > **所有 AI Agent（Claude Code / ChatGPT / Cursor / 任何接入本项目的智能体）的唯一入口。** 开始工作前，先读本文件。不要依赖聊天历史——上下文以本文档体系为准。
 
-**版本** 2.0 · **最后更新** 2026-07-13 · **维护者** AI Software Architect
+**版本** 3.0 · **最后更新** 2026-07-15 · **维护者** AI Software Architect
 
 ---
 
@@ -39,23 +39,21 @@ SundayOS/
 │   ├── ROADMAP.md             #   开发路线图
 │   ├── DESIGN_SYSTEM.md       #   设计规范与改进建议
 │   ├── PROJECT_MEMORY.md      #   已完成的重大设计决策
-│   ├── adr/                   #   架构决策记录（ADR 索引）
-│   ├── guides/                #   使用与操作手册
-│   │   ├── BACKEND_USAGE.md   #     后端运行/配置/排错
-│   │   ├── DEPLOY_RAILWAY.md  #     Railway 部署指南
-│   │   ├── DEBUGGING.md       #     ★ 全功能调试说明书（排错先看这个）
-│   │   ├── SHORTCUTS_SETUP.md  #     iPhone 快捷指令 + Siri 接入指南
-│   │   ├── OLLAMA_SETUP.md     #     Ollama 本地 Embedding 配置
-│   │   └── DEPLOY_SERVER.md    #     云服务器部署指南（小兔云/阿里云等）
-│   └── 3.0/                   #   实现级技术规范（13 文档 + 10 ADR）
+│   ├── adr/                   #   架构决策记录（12 ADR：001-012）
+│   ├── guides/                #   使用与操作手册（6 份）
+│   └── 3.0/                   #   实现级技术规范（13 文档）
 ├── VERSION                     # ★ 版本号（SemVer 单一真相源）
 ├── CHANGELOG.md                # ★ 变更日志（Keep a Changelog 格式）
 ├── persona.yaml                # ★ Sunday 人格真源（Git 版本化，改人格=commit）
 ├── backend/                   # FastAPI 参考实现（Python 3.11+）
 │   └── app/
 │       ├── runtime.py          #   ★ 架构骨骼：所有子系统的容器 + LINKAGE 图
+│       ├── log_engine.py       #   结构化 JSON 运行日志（轮转）
+│       ├── auth/               #   用户账号系统
+│       │   └── __init__.py     #     UserStore + pbkdf2 密码哈希 + Token 认证
 │       ├── cognition/
-│       │   ├── context_builder.py  # 话题感知跨会话上下文组装
+│       │   ├── burst_split.py      # 自然多气泡消息拆分
+│       │   ├── context_builder.py  # 话题感知跨会话上下文
 │       │   ├── react_loop.py       # ReAct 执行循环
 │       │   └── tools.py            # 技能注册中心（8 技能）
 │       ├── memory/
@@ -63,6 +61,8 @@ SundayOS/
 │       │   ├── reflection.py       # L2 反思引擎
 │       │   └── experience.py       # L3 体验抽象层
 │       ├── persona/
+│       │   ├── preferences.py      # 用户偏好档案（SQLite）
+│       │   ├── feedback_parser.py  # NL 反馈 → 结构化偏好（LLM 解析）
 │       │   └── empathy.py          # 共情计算（XiaoIce UU+IRG）
 │       └── routers/           # (预留) 未来路由拆分
 ├── console/                   # Next.js 15 Web 控制台（前端原型）
