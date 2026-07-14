@@ -19,6 +19,7 @@ from .webchat import CHAT_HTML
 from .pwa import MANIFEST_JSON, get_icon_svg
 from .persona.preferences import PreferenceStore
 from .persona.feedback_parser import parse_feedback
+from .auth import UserStore
 
 from .cognition.belief import BeliefState
 from .cognition.burst_split import burst_split
@@ -88,12 +89,14 @@ except Exception:
 CONV = ConversationStore()
 API_KEY = os.getenv("SUNDAY_API_KEY", "change-me-in-production")
 
-# ── Preference store (ADR-012) ───────────────────────────────────────
-# Reuses the SQLite connection from MEMORY if available; otherwise creates
-# a standalone connection for preference data.
+# ── Preference store (ADR-012) ──
 import sqlite3 as _sqlite3
-_PREF_DB = MEMORY._conn if hasattr(MEMORY, "_conn") else _sqlite3.connect(os.getenv("SUNDAY_DB_PATH", "./sunday.db"))
+_DB_PATH = os.getenv("SUNDAY_DB_PATH", "./sunday.db")
+_PREF_DB = MEMORY._conn if hasattr(MEMORY, "_conn") else _sqlite3.connect(_DB_PATH)
 PREF_STORE = PreferenceStore(_PREF_DB)
+
+# ── User account store ──
+USER_STORE = UserStore(_DB_PATH)
 
 # Auto-upgrade embedder to semantic if API keys are configured AND the provider
 # actually supports embeddings (DeepSeek currently does not). Falls back to the
@@ -132,28 +135,32 @@ def _record_stats(engine_id: str | None, latency_ms: float,
 # Call reload_persona() to pick up changes without restarting.
 
 
-def _auth(x_api_key: str | None) -> None:
-    if x_api_key != API_KEY:
-        raise HTTPException(status_code=401, detail="invalid or missing X-API-Key")
+def _auth(x_api_key: str | None = None,
+          x_sunday_token: str | None = None) -> str:
+    """Authenticate request. Returns user_id on success, raises 401 on failure.
+
+    Dual auth: User token first (for logged-in users), then API key
+    (for admin / Shortcuts / scripts). Token is the primary path.
+    """
+    # Path 1: User token (webchat/console login)
+    if x_sunday_token:
+        user = USER_STORE.get_user_by_token(x_sunday_token)
+        if user is not None:
+            return user.id
+        raise HTTPException(status_code=401, detail="Token 已过期，请重新登录")
+
+    # Path 2: Legacy API key (admin / Shortcuts / curl)
+    if x_api_key:
+        if x_api_key == API_KEY:
+            import hashlib
+            return "user_" + hashlib.sha256(x_api_key.encode("utf-8")).hexdigest()[:16]
+        raise HTTPException(status_code=401, detail="invalid or missing API Key")
+
+    # No credentials at all
+    raise HTTPException(status_code=401, detail="请先登录或提供 API Key")
 
 
-# FastAPI will call this once per request, then inject the result.
-# Caches the SHA256 so _resolve_user is O(1) after first call per request.
-_USER_CACHE: dict[str, str] = {}
 
-def _resolve_user(x_api_key: str | None) -> str:
-    """Derive a stable user_id from the API Key. Cached per request."""
-    import hashlib
-    key = x_api_key or "anonymous"
-    cached = _USER_CACHE.get(key)
-    if cached:
-        return cached
-    result = "user_" + hashlib.sha256(key.encode("utf-8")).hexdigest()[:16]
-    _USER_CACHE[key] = result
-    # Keep cache bounded
-    if len(_USER_CACHE) > 1000:
-        _USER_CACHE.clear()
-    return result
 
 
 # --- iPhone Shortcuts endpoints ----------------------------------------------
@@ -165,14 +172,14 @@ class ShortcutChatRequest(BaseModel):
 
 @app.post("/api/shortcuts/chat")
 async def shortcuts_chat(req: ShortcutChatRequest,
-                         x_api_key: str | None = Header(default=None)):
+                         x_api_key: str | None = Header(default=None), x_sunday_token: str | None = Header(default=None, alias="X-Sunday-Token")):
     """iPhone Shortcuts / Siri endpoint.
 
     Accepts a message, runs the full Sunday pipeline, returns a compact
     voice-friendly response. Designed to be used with the "Get Contents of URL"
     action in Apple Shortcuts.
     """
-    _auth(x_api_key)
+    user_id = _auth(x_api_key, x_sunday_token)
 
     # Run the same pipeline as /api/chat but with a compact response
     try:
@@ -180,7 +187,7 @@ async def shortcuts_chat(req: ShortcutChatRequest,
     except GuardrailTripwire as t:
         raise HTTPException(status_code=400, detail=f"guardrail:{t.layer}:{t.reason}")
 
-    user = _resolve_user(x_api_key)
+    user = user_id
 
     # Topic-aware cross-session context
     assembled = await build_context(req.message, user, MEMORY, ROUTER)
@@ -284,6 +291,51 @@ async def home() -> str:
     return CHAT_HTML
 
 
+# ── Auth: register / login ─────────────────────────────────────────
+
+class AuthRequest(BaseModel):
+    username: str
+    password: str
+
+
+@app.post("/api/auth/register")
+async def auth_register(req: AuthRequest) -> dict:
+    """Register a new user account. Returns a token for immediate login."""
+    try:
+        user = USER_STORE.create_user(req.username, req.password)
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    return {
+        "token": user.token,
+        "user_id": user.id,
+        "username": user.username,
+    }
+
+
+@app.post("/api/auth/login")
+async def auth_login(req: AuthRequest) -> dict:
+    """Login with username + password. Returns a fresh token."""
+    user = USER_STORE.verify_user(req.username, req.password)
+    if user is None:
+        raise HTTPException(status_code=401, detail="用户名或密码错误")
+    return {
+        "token": user.token,
+        "user_id": user.id,
+        "username": user.username,
+    }
+
+
+@app.get("/api/auth/me")
+async def auth_me(x_api_key: str | None = Header(default=None), x_sunday_token: str | None = Header(default=None, alias="X-Sunday-Token")) -> dict:
+    """Get current user info from token."""
+    user_id = _auth(x_api_key, x_sunday_token)
+    user = USER_STORE.get_user_by_id(user_id)
+    if user is not None:
+        return {"user_id": user.id, "username": user.username, "created_at": user.created_at}
+    # Legacy API key user
+    return {"user_id": user_id, "username": "admin"}
+
+
 @app.get("/api/version")
 async def version_info() -> dict:
     """Return the current Sunday OS version + changelog pointer."""
@@ -313,9 +365,9 @@ async def health() -> dict:
 
 
 @app.get("/api/stats/dashboard")
-async def dashboard_stats(x_api_key: str | None = Header(default=None)) -> dict:
+async def dashboard_stats(x_api_key: str | None = Header(default=None), x_sunday_token: str | None = Header(default=None, alias="X-Sunday-Token")) -> dict:
     """Real-time dashboard data — replaces frontend mock values."""
-    _auth(x_api_key)
+    user_id = _auth(x_api_key, x_sunday_token)
     avg_lat = (runtime.total_latency_ms / runtime.call_count
                if runtime.call_count > 0 else 0)
     return {
@@ -343,13 +395,13 @@ async def dashboard_stats(x_api_key: str | None = Header(default=None)) -> dict:
 
 
 @app.get("/api/debug/overview")
-async def debug_overview(x_api_key: str | None = Header(default=None)) -> dict:
+async def debug_overview(x_api_key: str | None = Header(default=None), x_sunday_token: str | None = Header(default=None, alias="X-Sunday-Token")) -> dict:
     """Unified debug overview — all module states in one call.
 
     Intended as the first thing to check when something breaks.
     Returns a snapshot of every subsystem's runtime state.
     """
-    _auth(x_api_key)
+    user_id = _auth(x_api_key, x_sunday_token)
     from .memory.embedding import embedding_dim as edim
     return {
         "server": {
@@ -403,11 +455,11 @@ async def debug_overview(x_api_key: str | None = Header(default=None)) -> dict:
 
 
 @app.get("/api/debug/env")
-async def debug_env(x_api_key: str | None = Header(default=None)) -> dict:
+async def debug_env(x_api_key: str | None = Header(default=None), x_sunday_token: str | None = Header(default=None, alias="X-Sunday-Token")) -> dict:
     """Diagnostic: report WHICH engine-related env vars the running process can
     see — names + presence + value length only. NEVER returns the secret value.
     Auth-gated. Remove or ignore once diagnosis is done."""
-    _auth(x_api_key)
+    user_id = _auth(x_api_key, x_sunday_token)
     watched = [
         "SUNDAY_API_KEY", "SUNDAY_ALLOW_MOCK", "DEEPSEEK_API_KEY",
         "DEEPSEEK_BASE_URL", "QWEN_API_KEY", "OPENAI_API_KEY",
@@ -428,7 +480,7 @@ async def debug_env(x_api_key: str | None = Header(default=None)) -> dict:
 
 @app.get("/api/debug/routing")
 async def debug_routing(msg: str = "你好",
-                         x_api_key: str | None = Header(default=None)) -> dict:
+                         x_api_key: str | None = Header(default=None), x_sunday_token: str | None = Header(default=None, alias="X-Sunday-Token")) -> dict:
     """Test router: which engine would answer this message RIGHT NOW?
 
     Shows the full decision tree — eligible engines, scores, which one
@@ -438,7 +490,7 @@ async def debug_routing(msg: str = "你好",
     Query params:
       msg  — test message to route (default: "你好")
     """
-    _auth(x_api_key)
+    user_id = _auth(x_api_key, x_sunday_token)
 
     messages = [
         EngineMessage(role="system", content="你是一个AI助手，用中文回答。"),
@@ -505,20 +557,20 @@ async def debug_routing(msg: str = "你好",
 
 
 @app.get("/api/skills")
-async def skills(x_api_key: str | None = Header(default=None)) -> dict:
+async def skills(x_api_key: str | None = Header(default=None), x_sunday_token: str | None = Header(default=None, alias="X-Sunday-Token")) -> dict:
     """List all registered skills with categories and usage stats."""
-    _auth(x_api_key)
+    user_id = _auth(x_api_key, x_sunday_token)
     return SKILLS.summary()
 
 
 @app.get("/api/persona")
 async def persona_view(reload: bool = False,
-                       x_api_key: str | None = Header(default=None)) -> dict:
+                       x_api_key: str | None = Header(default=None), x_sunday_token: str | None = Header(default=None, alias="X-Sunday-Token")) -> dict:
     """View Sunday's current persona (from persona.yaml).
 
     Set ?reload=true to hot-reload from disk without restarting.
     """
-    _auth(x_api_key)
+    user_id = _auth(x_api_key, x_sunday_token)
     data = reload_persona() if reload else load_persona()
     return {
         "version": persona_version(),
@@ -530,10 +582,10 @@ async def persona_view(reload: bool = False,
 # ── Feedback & Preferences (ADR-012) ──────────────────────────────────
 
 @app.get("/api/preferences")
-async def get_prefs(x_api_key: str | None = Header(default=None)) -> dict:
+async def get_prefs(x_api_key: str | None = Header(default=None), x_sunday_token: str | None = Header(default=None, alias="X-Sunday-Token")) -> dict:
     """Return the current user's preference profile."""
-    _auth(x_api_key)
-    user_id = _resolve_user(x_api_key)
+    user_id = _auth(x_api_key, x_sunday_token)
+    user_id = user_id
     prefs = get_user_preferences(user_id, PREF_STORE)
     return {
         "user_id": user_id,
@@ -552,10 +604,10 @@ class FeedbackRequest(BaseModel):
 
 @app.post("/api/feedback")
 async def post_feedback(req: FeedbackRequest,
-                         x_api_key: str | None = Header(default=None)) -> dict:
+                         x_api_key: str | None = Header(default=None), x_sunday_token: str | None = Header(default=None, alias="X-Sunday-Token")) -> dict:
     """Submit feedback on a reply. Adjusts quality score and parses NL feedback."""
-    _auth(x_api_key)
-    user_id = _resolve_user(x_api_key)
+    user_id = _auth(x_api_key, x_sunday_token)
+    user_id = user_id
 
     # 1. Adjust engine quality (immediate, lightweight)
     if req.engine_id:
@@ -595,10 +647,10 @@ async def post_feedback(req: FeedbackRequest,
 
 @app.post("/api/preferences/update")
 async def update_prefs(body: dict,
-                        x_api_key: str | None = Header(default=None)) -> dict:
+                        x_api_key: str | None = Header(default=None), x_sunday_token: str | None = Header(default=None, alias="X-Sunday-Token")) -> dict:
     """Directly set a preference value via API (for settings UI)."""
-    _auth(x_api_key)
-    user_id = _resolve_user(x_api_key)
+    user_id = _auth(x_api_key, x_sunday_token)
+    user_id = user_id
     prefs = PREF_STORE.get(user_id)
 
     if "style" in body:
@@ -619,10 +671,10 @@ class EmpathyRequest(BaseModel):
 
 @app.post("/api/debug/context")
 async def debug_context(req: EmpathyRequest,
-                        x_api_key: str | None = Header(default=None)) -> dict:
+                        x_api_key: str | None = Header(default=None), x_sunday_token: str | None = Header(default=None, alias="X-Sunday-Token")) -> dict:
     """Debug endpoint — see what context the ContextBuilder assembles."""
-    _auth(x_api_key)
-    user = _resolve_user(x_api_key)
+    user_id = _auth(x_api_key, x_sunday_token)
+    user = user_id
     assembled = await build_context(req.message, user, MEMORY, ROUTER)
     return {
         "message": req.message,
@@ -637,13 +689,13 @@ async def debug_context(req: EmpathyRequest,
 
 @app.post("/api/empathy/analyze")
 async def empathy_analyze_endpoint(req: EmpathyRequest,
-                                   x_api_key: str | None = Header(default=None)) -> dict:
+                                   x_api_key: str | None = Header(default=None), x_sunday_token: str | None = Header(default=None, alias="X-Sunday-Token")) -> dict:
     """Debug endpoint — analyze a single message for emotion and intent.
 
     Returns the UU emotional snapshot + IRG empathy guidance that would be
     injected into the system prompt.
     """
-    _auth(x_api_key)
+    user_id = _auth(x_api_key, x_sunday_token)
     snapshot, guidance = await run_empathy_pipeline(req.message, ROUTER)
     return {
         "message": req.message,
@@ -678,8 +730,8 @@ async def engines() -> dict:
 
 
 @app.post("/api/chat")
-async def chat(req: ChatRequest, x_api_key: str | None = Header(default=None)) -> dict:
-    _auth(x_api_key)
+async def chat(req: ChatRequest, x_api_key: str | None = Header(default=None), x_sunday_token: str | None = Header(default=None, alias="X-Sunday-Token")) -> dict:
+    user_id = _auth(x_api_key, x_sunday_token)
 
     # L6 input guardrails
     try:
@@ -688,7 +740,7 @@ async def chat(req: ChatRequest, x_api_key: str | None = Header(default=None)) -
         raise HTTPException(status_code=400, detail=f"guardrail:{t.layer}:{t.reason}")
 
     # Build topic-aware cross-session context (Engram/GAM/APEX-MEM)
-    assembled = await build_context(req.message, _resolve_user(x_api_key), MEMORY, ROUTER)
+    assembled = await build_context(req.message, user_id, MEMORY, ROUTER)
     context_block = assembled.to_prompt_section() if assembled else ""
 
     # Empathy: UU analysis → IRG guidance
@@ -697,7 +749,7 @@ async def chat(req: ChatRequest, x_api_key: str | None = Header(default=None)) -
     )
 
     # Resolve user early: needed for preference injection + logging
-    user_id = _resolve_user(x_api_key)
+    user_id = user_id
 
     # Dispatch: System 1 vs System 2
     belief = BeliefState(user_id=user_id)
@@ -722,7 +774,7 @@ async def chat(req: ChatRequest, x_api_key: str | None = Header(default=None)) -
         react_result = await react.run(
             system_prompt=system_prompt,
             user_message=req.message,
-            user_id=_resolve_user(x_api_key),
+            user_id=user_id,
         )
         reply = react_result.answer
         react_steps = [
@@ -802,7 +854,7 @@ async def chat(req: ChatRequest, x_api_key: str | None = Header(default=None)) -
     # --- conversation session: auto-create or append ---
     conv_id = req.conversation_id
     if not conv_id or not CONV.get(conv_id):
-        conv = CONV.create(_resolve_user(x_api_key))
+        conv = CONV.create(user_id)
         conv_id = conv.id
     CONV.add_message(conv_id, "user", req.message)
     CONV.add_message(conv_id, "assistant", reply,
@@ -834,16 +886,16 @@ async def chat(req: ChatRequest, x_api_key: str | None = Header(default=None)) -
 
     MEMORY.add(MemoryNode(
         content=f"用户说：{req.message}",
-        user_id=_resolve_user(x_api_key),
+        user_id=user_id,
         type=MemoryType.EPISODIC,
         importance=importance,
         source="voice_capsule" if req.voice_input else "chat",
     ))
 
     # -- auto-trigger reflection if importance threshold crossed ---
-    runtime.session_importance[_resolve_user(x_api_key)] = runtime.session_importance.get(_resolve_user(x_api_key), 0) + importance
-    schedule_reflection(MEMORY, _resolve_user(x_api_key), ROUTER,
-                        session_importance=runtime.session_importance[_resolve_user(x_api_key)])
+    runtime.session_importance[user_id] = runtime.session_importance.get(user_id, 0) + importance
+    schedule_reflection(MEMORY, user_id, ROUTER,
+                        session_importance=runtime.session_importance[user_id])
 
     return {
         "reply": reply,
@@ -861,7 +913,7 @@ async def chat(req: ChatRequest, x_api_key: str | None = Header(default=None)) -
 
 @app.post("/api/chat/stream")
 async def chat_stream(req: ChatRequest,
-                      x_api_key: str | None = Header(default=None)):
+                      x_api_key: str | None = Header(default=None), x_sunday_token: str | None = Header(default=None, alias="X-Sunday-Token")):
     """SSE streaming chat — each ReAct step is pushed as an event.
 
     For System 1 (talker): streams the text chunk by chunk.
@@ -869,7 +921,7 @@ async def chat_stream(req: ChatRequest,
     """
     import json as _json
 
-    _auth(x_api_key)
+    user_id = _auth(x_api_key, x_sunday_token)
 
     async def _event_stream():
         # Input guardrails
@@ -880,7 +932,7 @@ async def chat_stream(req: ChatRequest,
             return
 
         # Memory retrieval
-        assembled = await build_context(req.message, _resolve_user(x_api_key), MEMORY, ROUTER)
+        assembled = await build_context(req.message, user_id, MEMORY, ROUTER)
         context_block = assembled.to_prompt_section() if assembled else ""
 
         # Empathy: UU analysis → IRG guidance
@@ -889,7 +941,7 @@ async def chat_stream(req: ChatRequest,
         )
 
         # Dispatch
-        stream_user_id = _resolve_user(x_api_key)
+        stream_user_id = user_id
         belief = BeliefState(user_id=stream_user_id)
         use_reasoner = needs_reasoner(req.role_hint or "chat", req.message, belief)
 
@@ -901,7 +953,7 @@ async def chat_stream(req: ChatRequest,
 
         conv_id = req.conversation_id
         if not conv_id or not CONV.get(conv_id):
-            conv = CONV.create(_resolve_user(x_api_key))
+            conv = CONV.create(user_id)
             conv_id = conv.id
 
         if use_reasoner:
@@ -911,7 +963,7 @@ async def chat_stream(req: ChatRequest,
             react_result = await react.run(
                 system_prompt=system_prompt,
                 user_message=req.message,
-                user_id=_resolve_user(x_api_key),
+                user_id=user_id,
             )
             for s in react_result.steps:
                 yield f"data: {_json.dumps({'type': s.type, 'content': s.content, 'tool_name': s.tool_name, 'tool_input': s.tool_input, 'tool_output': s.tool_output, 'latency_ms': s.latency_ms})}\n\n"
@@ -968,9 +1020,9 @@ class ConversationCreateRequest(BaseModel):
 
 @app.post("/api/conversations")
 async def conversation_create(req: ConversationCreateRequest,
-                              x_api_key: str | None = Header(default=None)) -> dict:
-    _auth(x_api_key)
-    conv = CONV.create(_resolve_user(x_api_key), req.title)
+                              x_api_key: str | None = Header(default=None), x_sunday_token: str | None = Header(default=None, alias="X-Sunday-Token")) -> dict:
+    user_id = _auth(x_api_key, x_sunday_token)
+    conv = CONV.create(user_id, req.title)
     return {
         "id": conv.id,
         "title": conv.title,
@@ -983,9 +1035,9 @@ async def conversation_create(req: ConversationCreateRequest,
 
 @app.get("/api/conversations")
 async def conversation_list(
-        x_api_key: str | None = Header(default=None)) -> dict:
-    _auth(x_api_key)
-    convs = CONV.list(_resolve_user(x_api_key))
+        x_api_key: str | None = Header(default=None), x_sunday_token: str | None = Header(default=None, alias="X-Sunday-Token")) -> dict:
+    user_id = _auth(x_api_key, x_sunday_token)
+    convs = CONV.list(user_id)
     return {
         "conversations": [
             {
@@ -1002,8 +1054,8 @@ async def conversation_list(
 
 @app.get("/api/conversations/{conv_id}")
 async def conversation_get(conv_id: str,
-                           x_api_key: str | None = Header(default=None)) -> dict:
-    _auth(x_api_key)
+                           x_api_key: str | None = Header(default=None), x_sunday_token: str | None = Header(default=None, alias="X-Sunday-Token")) -> dict:
+    user_id = _auth(x_api_key, x_sunday_token)
     conv = CONV.get(conv_id)
     if conv is None:
         raise HTTPException(status_code=404, detail="conversation not found")
@@ -1020,8 +1072,8 @@ async def conversation_get(conv_id: str,
 
 @app.delete("/api/conversations/{conv_id}")
 async def conversation_delete(conv_id: str,
-                              x_api_key: str | None = Header(default=None)) -> dict:
-    _auth(x_api_key)
+                              x_api_key: str | None = Header(default=None), x_sunday_token: str | None = Header(default=None, alias="X-Sunday-Token")) -> dict:
+    user_id = _auth(x_api_key, x_sunday_token)
     return {"deleted": CONV.delete(conv_id)}
 
 
@@ -1031,8 +1083,8 @@ class ConversationRenameRequest(BaseModel):
 
 @app.put("/api/conversations/{conv_id}/title")
 async def conversation_rename(conv_id: str, req: ConversationRenameRequest,
-                              x_api_key: str | None = Header(default=None)) -> dict:
-    _auth(x_api_key)
+                              x_api_key: str | None = Header(default=None), x_sunday_token: str | None = Header(default=None, alias="X-Sunday-Token")) -> dict:
+    user_id = _auth(x_api_key, x_sunday_token)
     ok = CONV.rename(conv_id, req.title)
     if not ok:
         raise HTTPException(status_code=404, detail="conversation not found")
@@ -1046,10 +1098,10 @@ class MemoryStoreRequest(BaseModel):
 
 
 @app.post("/api/memory/store")
-async def memory_store(req: MemoryStoreRequest, x_api_key: str | None = Header(default=None)) -> dict:
-    _auth(x_api_key)
+async def memory_store(req: MemoryStoreRequest, x_api_key: str | None = Header(default=None), x_sunday_token: str | None = Header(default=None, alias="X-Sunday-Token")) -> dict:
+    user_id = _auth(x_api_key, x_sunday_token)
     node = MEMORY.add(MemoryNode(
-        content=req.content, user_id=_resolve_user(x_api_key),
+        content=req.content, user_id=user_id,
         type=MemoryType(req.memory_type), importance=req.importance,
     ))
     return {"id": node.id, "stored": True}
@@ -1061,9 +1113,9 @@ class MemorySearchRequest(BaseModel):
 
 
 @app.post("/api/memory/search")
-async def memory_search(req: MemorySearchRequest, x_api_key: str | None = Header(default=None)) -> dict:
-    _auth(x_api_key)
-    hits = MEMORY.retrieve(req.query, user_id=_resolve_user(x_api_key), k=req.k)
+async def memory_search(req: MemorySearchRequest, x_api_key: str | None = Header(default=None), x_sunday_token: str | None = Header(default=None, alias="X-Sunday-Token")) -> dict:
+    user_id = _auth(x_api_key, x_sunday_token)
+    hits = MEMORY.retrieve(req.query, user_id=user_id, k=req.k)
     return {
         "results": [
             {
@@ -1088,18 +1140,18 @@ class ReflectionRequest(BaseModel):
 
 @app.post("/api/memory/reflect")
 async def memory_reflect(req: ReflectionRequest,
-                         x_api_key: str | None = Header(default=None)) -> dict:
+                         x_api_key: str | None = Header(default=None), x_sunday_token: str | None = Header(default=None, alias="X-Sunday-Token")) -> dict:
     """Trigger reflection (L1→L2). Generative Agents two-step pipeline.
 
     Unless force=True, respects the importance threshold.
     Returns the generated insights with their evidence IDs.
     """
-    _auth(x_api_key)
+    user_id = _auth(x_api_key, x_sunday_token)
     from .memory.reflection import _should_reflect
-    if not req.force and not _should_reflect(MEMORY, _resolve_user(x_api_key)):
+    if not req.force and not _should_reflect(MEMORY, user_id):
         return {"triggered": False, "insights": [],
                 "message": "Importance threshold not reached. Use force=true to override."}
-    insights = await run_reflection(MEMORY, _resolve_user(x_api_key), ROUTER)
+    insights = await run_reflection(MEMORY, user_id, ROUTER)
     return {
         "triggered": True,
         "insights": insights,
@@ -1109,11 +1161,11 @@ async def memory_reflect(req: ReflectionRequest,
 
 @app.get("/api/memory/reflections")
 async def memory_reflections(limit: int = 20,
-                             x_api_key: str | None = Header(default=None)) -> dict:
+                             x_api_key: str | None = Header(default=None), x_sunday_token: str | None = Header(default=None, alias="X-Sunday-Token")) -> dict:
     """List generated REFLECTION nodes for the current user, newest first."""
-    _auth(x_api_key)
+    user_id = _auth(x_api_key, x_sunday_token)
     from .memory.schema import MemoryType
-    all_nodes = MEMORY.all(_resolve_user(x_api_key))
+    all_nodes = MEMORY.all(user_id)
     reflections = [
         n for n in all_nodes if n.type == MemoryType.REFLECTION
     ]
@@ -1133,13 +1185,13 @@ async def memory_reflections(limit: int = 20,
 
 
 @app.post("/api/memory/consolidate")
-async def memory_consolidate(x_api_key: str | None = Header(default=None)) -> dict:
+async def memory_consolidate(x_api_key: str | None = Header(default=None), x_sunday_token: str | None = Header(default=None, alias="X-Sunday-Token")) -> dict:
     """Run L1 consolidation — archive expired low-importance memories.
 
     For the full L3 experience layer (merge + archive + extract + patterns),
     use POST /api/experience/run.
     """
-    _auth(x_api_key)
+    user_id = _auth(x_api_key, x_sunday_token)
     dropped = MEMORY.archive_expired(threshold=0.4)
     total = len(MEMORY.all())
     return {
@@ -1152,7 +1204,7 @@ async def memory_consolidate(x_api_key: str | None = Header(default=None)) -> di
 # --- experience layer endpoints (L2→L3) -------------------------------------
 
 @app.post("/api/experience/run")
-async def experience_run(x_api_key: str | None = Header(default=None)) -> dict:
+async def experience_run(x_api_key: str | None = Header(default=None), x_sunday_token: str | None = Header(default=None, alias="X-Sunday-Token")) -> dict:
     """Run the full L3 Experience layer.
 
     Performs three operations from From Storage to Experience (2026):
@@ -1163,8 +1215,8 @@ async def experience_run(x_api_key: str | None = Header(default=None)) -> dict:
     This is the nightly batch job for Sunday's cognitive evolution.
     Uses the current user's identity (derived from API key).
     """
-    _auth(x_api_key)
-    user = _resolve_user(x_api_key)
+    user_id = _auth(x_api_key, x_sunday_token)
+    user = user_id
     result = await run_experience_layer(MEMORY, ROUTER, user)
     return {
         "user": user,
@@ -1178,11 +1230,11 @@ async def experience_run(x_api_key: str | None = Header(default=None)) -> dict:
 
 @app.get("/api/experience/nodes")
 async def experience_nodes(limit: int = 20,
-                           x_api_key: str | None = Header(default=None)) -> dict:
+                           x_api_key: str | None = Header(default=None), x_sunday_token: str | None = Header(default=None, alias="X-Sunday-Token")) -> dict:
     """List EXPERIENCE nodes for the current user."""
-    _auth(x_api_key)
+    user_id = _auth(x_api_key, x_sunday_token)
     from .memory.schema import MemoryType
-    all_nodes = MEMORY.all(_resolve_user(x_api_key))
+    all_nodes = MEMORY.all(user_id)
     exp_nodes = [n for n in all_nodes if n.type == MemoryType.EXPERIENCE]
     exp_nodes.sort(key=lambda n: n.created_at, reverse=True)
     return {
@@ -1201,9 +1253,9 @@ async def experience_nodes(limit: int = 20,
 
 
 @app.get("/api/memory/stats")
-async def memory_stats(x_api_key: str | None = Header(default=None)) -> dict:
+async def memory_stats(x_api_key: str | None = Header(default=None), x_sunday_token: str | None = Header(default=None, alias="X-Sunday-Token")) -> dict:
     """Return memory statistics — count by type, embedder info."""
-    _auth(x_api_key)
+    user_id = _auth(x_api_key, x_sunday_token)
     from .memory.embedding import embedding_dim as edim, embed as emb_fn
     all_nodes = MEMORY.all()
     by_type: dict[str, int] = {}
@@ -1220,6 +1272,6 @@ async def memory_stats(x_api_key: str | None = Header(default=None)) -> dict:
 
 
 @app.delete("/api/memory/{mem_id}")
-async def memory_delete(mem_id: str, x_api_key: str | None = Header(default=None)) -> dict:
-    _auth(x_api_key)
+async def memory_delete(mem_id: str, x_api_key: str | None = Header(default=None), x_sunday_token: str | None = Header(default=None, alias="X-Sunday-Token")) -> dict:
+    user_id = _auth(x_api_key, x_sunday_token)
     return {"deleted": MEMORY.delete(mem_id)}

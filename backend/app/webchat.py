@@ -226,6 +226,9 @@ CHAT_HTML = r"""<!DOCTYPE html>
     .sb-header .new-btn{min-height:44px;font-size:14px}
     /* Status bar */
     .status-bar{font-size:10px;gap:8px}
+    /* Login / register card */
+    .login-card{display:flex;flex-direction:column;align-items:center}
+    .login-card input{-webkit-appearance:none;-moz-appearance:none;appearance:none}
     /* Feedback buttons — subtle, expand on hover */
     .feedback-row{display:flex;gap:4px;margin-top:6px;opacity:0.35;transition:opacity .2s}
     .bubble:hover .feedback-row,.feedback-row:hover{opacity:1}
@@ -345,7 +348,10 @@ const T = {
 // ── state ──────────────────────────────────────
 let lang = localStorage.getItem("sunday.lang") ||
   (navigator.language.startsWith("zh") ? "zh" : "en");
-let apiKey = localStorage.getItem("sunday.key") || "";
+// Try token first (new auth), fall back to old API key
+let sundayToken = localStorage.getItem("sunday.token") || localStorage.getItem("sunday.key") || "";
+// Deprecated: kept for backward compat with old ensureKey() calls
+let apiKey = sundayToken;
 let convId = null;          // current conversation id
 let convList = [];          // cached conversation list
 let sidebarOpen = true;
@@ -376,42 +382,110 @@ $("langZh").className=lang==="zh"?"on":"";
 $("langEn").className=lang==="en"?"on":"";
 
 function renderEmpty(){
-  const keyHint = apiKey ? "" : `
-    <div style="margin-top:20px;display:flex;flex-direction:column;align-items:center;gap:8px">
-      <input id="keyInputWelcome" type="password" placeholder="请输入 API Key"
-        style="width:240px;padding:8px 12px;border-radius:8px;border:1px solid var(--border2);
-        background:var(--surface);color:var(--text);font-size:13px;font-family:var(--font);text-align:center;
-        outline:none"
-        onfocus="this.style.borderColor='var(--accent)'"
-        onblur="this.style.borderColor='var(--border2)'">
-      <button onclick="saveWelcomeKey()"
-        style="padding:8px 24px;border-radius:8px;border:none;background:var(--accent);color:#fff;
-        font-size:13px;font-family:var(--font);cursor:pointer;min-height:40px">
-        确认并开始聊天
-      </button>
-      <p id="welcomeKeyErr" style="font-size:11px;color:var(--danger);display:none"></p>
+  if(sundayToken){
+    wrap.innerHTML=`<div class="empty"><div class="big">☀️</div><h2>${t("empty_h")}</h2><p>${t("empty_p")}</p></div>`;
+    return;
+  }
+  wrap.innerHTML=renderLoginCard();
+}
+
+// ── Login UI ────────────────────────────────────
+function renderLoginCard(){
+  return `
+    <div class="big">☀️</div>
+    <h2>Welcome to Sunday</h2>
+    <p style="margin-bottom:16px">登录或注册以开始聊天</p>
+    <div class="login-card" id="loginCard">
+      <input id="loginUser" type="text" placeholder="用户名" autocomplete="username"
+        style="width:240px;padding:10px 14px;border-radius:10px;border:1px solid var(--border2);
+        background:var(--surface);color:var(--text);font-size:15px;font-family:var(--font);outline:none;margin-bottom:8px"
+        onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border2)'">
+      <input id="loginPass" type="password" placeholder="密码" autocomplete="current-password"
+        style="width:240px;padding:10px 14px;border-radius:10px;border:1px solid var(--border2);
+        background:var(--surface);color:var(--text);font-size:15px;font-family:var(--font);outline:none;margin-bottom:4px"
+        onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border2)'"
+        onkeydown="if(event.key==='Enter')doLogin()">
+      <p id="loginErr" style="font-size:11px;color:var(--danger);display:none;margin:4px 0"></p>
+      <button onclick="doLogin()"
+        style="width:240px;padding:10px 0;border-radius:10px;border:none;background:var(--accent);color:#fff;
+        font-size:14px;font-family:var(--font);cursor:pointer;min-height:44px;margin-top:8px">登录</button>
+      <button onclick="showRegister()"
+        style="background:none;border:none;color:var(--accent);font-size:12px;font-family:var(--font);cursor:pointer;margin-top:10px;text-decoration:underline">没有账号？注册</button>
+    </div>
+    <div class="login-card" id="regCard" style="display:none">
+      <input id="regUser" type="text" placeholder="用户名 (2-30位)" autocomplete="username"
+        style="width:240px;padding:10px 14px;border-radius:10px;border:1px solid var(--border2);
+        background:var(--surface);color:var(--text);font-size:15px;font-family:var(--font);outline:none;margin-bottom:8px"
+        onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border2)'">
+      <input id="regPass" type="password" placeholder="密码 (4位以上)" autocomplete="new-password"
+        style="width:240px;padding:10px 14px;border-radius:10px;border:1px solid var(--border2);
+        background:var(--surface);color:var(--text);font-size:15px;font-family:var(--font);outline:none;margin-bottom:8px"
+        onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border2)'">
+      <input id="regPass2" type="password" placeholder="确认密码"
+        style="width:240px;padding:10px 14px;border-radius:10px;border:1px solid var(--border2);
+        background:var(--surface);color:var(--text);font-size:15px;font-family:var(--font);outline:none;margin-bottom:4px"
+        onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border2)'"
+        onkeydown="if(event.key==='Enter')doRegister()">
+      <p id="regErr" style="font-size:11px;color:var(--danger);display:none;margin:4px 0"></p>
+      <button onclick="doRegister()"
+        style="width:240px;padding:10px 0;border-radius:10px;border:none;background:var(--accent);color:#fff;
+        font-size:14px;font-family:var(--font);cursor:pointer;min-height:44px;margin-top:8px">注册</button>
+      <button onclick="showLogin()"
+        style="background:none;border:none;color:var(--accent);font-size:12px;font-family:var(--font);cursor:pointer;margin-top:10px;text-decoration:underline">已有账号？登录</button>
     </div>`;
-  wrap.innerHTML=`<div class="empty"><div class="big">☀️</div><h2>${t("empty_h")}</h2><p>${t("empty_p")}</p>${keyHint}</div>`;
 }
 
-function saveWelcomeKey(){
-  const inp = document.getElementById("keyInputWelcome");
-  const err = document.getElementById("welcomeKeyErr");
-  if(!inp) return;
-  const v = inp.value.trim();
-  if(!v){ err.textContent = "Key 不能为空"; err.style.display=""; return }
-  apiKey = v;
-  localStorage.setItem("sunday.key", apiKey);
-  err.style.display = "none";
-  renderEmpty(); // refresh to show connected state
-  refreshConvList();
-  ping(); // re-check connection
+function showRegister(){
+  document.getElementById('loginCard').style.display='none';
+  document.getElementById('regCard').style.display='';
+}
+function showLogin(){
+  document.getElementById('regCard').style.display='none';
+  document.getElementById('loginCard').style.display='';
 }
 
-// ── key ────────────────────────────────────────
+async function doLogin(){
+  const u=document.getElementById('loginUser').value.trim();
+  const p=document.getElementById('loginPass').value.trim();
+  const err=document.getElementById('loginErr');
+  if(!u||!p){err.textContent='请输入用户名和密码';err.style.display='';return}
+  try{
+    const r=await fetch('/api/auth/login',{method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({username:u,password:p})});
+    const d=await r.json();
+    if(!r.ok){err.textContent=d.detail||'登录失败';err.style.display='';return}
+    sundayToken=d.token;apiKey=sundayToken;
+    localStorage.setItem('sunday.token',sundayToken);
+    err.style.display='none';
+    renderEmpty();refreshConvList();ping();
+  }catch(e){err.textContent='网络错误';err.style.display=''}
+}
+
+async function doRegister(){
+  const u=document.getElementById('regUser').value.trim();
+  const p=document.getElementById('regPass').value.trim();
+  const p2=document.getElementById('regPass2').value.trim();
+  const err=document.getElementById('regErr');
+  if(!u||!p){err.textContent='请输入用户名和密码';err.style.display='';return}
+  if(p!==p2){err.textContent='两次密码不一致';err.style.display='';return}
+  try{
+    const r=await fetch('/api/auth/register',{method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({username:u,password:p})});
+    const d=await r.json();
+    if(!r.ok){err.textContent=d.detail||'注册失败';err.style.display='';return}
+    sundayToken=d.token;apiKey=sundayToken;
+    localStorage.setItem('sunday.token',sundayToken);
+    err.style.display='none';
+    renderEmpty();refreshConvList();ping();
+  }catch(e){err.textContent='网络错误';err.style.display=''}
+}
+
+// ── key (backward-compat) ───────────────────────
 function ensureKey(force){
-  if(force||!apiKey){const v=prompt(t("askKey"),apiKey||"");if(v!==null){apiKey=v.trim();localStorage.setItem("sunday.key",apiKey);}}
-  return apiKey;}
+  if(force||!sundayToken){renderEmpty();return false;}
+  return true;}
 
 // ── sidebar ────────────────────────────────────
 const isMobile = () => window.matchMedia("(max-width: 768px)").matches;
@@ -466,7 +540,7 @@ if(window.visualViewport){
 async function refreshConvList(){
   if(!apiKey){$("conv-list").innerHTML=`<div class="sb-empty">${t("noConv")}</div>`;return}
   try{
-    const r=await fetch("/api/conversations",{headers:{"X-API-Key":apiKey}});
+    const r=await fetch("/api/conversations",{headers:{"X-Sunday-Token":sundayToken}});
     if(!r.ok){convList=[];renderConvList();return}
     const d=await r.json();convList=d.conversations||[];renderConvList();
   }catch(e){convList=[];renderConvList()}
@@ -492,7 +566,7 @@ async function selectConv(id){
   if(!apiKey)return;
   convId=id;wrap.innerHTML="";renderEmpty();
   try{
-    const r=await fetch("/api/conversations/"+id,{headers:{"X-API-Key":apiKey}});
+    const r=await fetch("/api/conversations/"+id,{headers:{"X-Sunday-Token":sundayToken}});
     if(!r.ok)return;
     const d=await r.json();
     wrap.innerHTML="";
@@ -520,7 +594,7 @@ $("newConvBtn").onclick=newConversation;
 async function deleteConv(id){
   if(!confirm("删除这条对话？"))return;
   try{
-    await fetch("/api/conversations/"+id,{method:"DELETE",headers:{"X-API-Key":apiKey}});
+    await fetch("/api/conversations/"+id,{method:"DELETE",headers:{"X-Sunday-Token":sundayToken}});
     if(convId===id){convId=null;wrap.innerHTML="";renderEmpty()}
     await refreshConvList();
   }catch(e){}
@@ -569,7 +643,7 @@ function makeFbRow(text,engineId){
 let sending=false;
 async function send(){
   const text=input.value.trim();if(!text||sending)return;
-  if(!apiKey){ensureKey(true);if(!apiKey)return;}
+  if(!sundayToken){renderEmpty();return;}
   addMsg("me",text);input.value="";input.style.height="auto";
   sending=true;sendBtn.classList.remove("on");
   const typing=addMsg("ai","");
@@ -580,7 +654,7 @@ async function send(){
 
     // Try SSE streaming first
     const r=await fetch("/api/chat/stream",{method:"POST",
-      headers:{"Content-Type":"application/json","X-API-Key":apiKey},
+      headers:{"Content-Type":"application/json","X-Sunday-Token":sundayToken},
       body:JSON.stringify(body)});
 
     if(r.status===401){typing.remove();addMsg("ai",t("err401"),"",true);sending=false;return}
@@ -798,7 +872,7 @@ function saveInlineKey(){
   const v = inp.value.trim();
   if(!v){ err.textContent = "Key 不能为空"; err.style.display=""; return }
   apiKey = v;
-  localStorage.setItem("sunday.key", apiKey);
+  localStorage.setItem("sunday.token", sundayToken);
   err.style.display = "none";
   // Reload the current view
   if(viewMode === 1) refreshConsole();
@@ -833,7 +907,7 @@ async function refreshConsole(){
     healthCache = await r.json();
   }catch(e){ healthCache = null }
   const engR = await fetch("/api/engines").then(r=>r.json()).catch(()=>({engines:[]}));
-  const skillR = await fetch("/api/skills",{headers:{"X-API-Key":apiKey}}).then(r=>r.json()).catch(()=>({skills:{},by_category:{},total:0}));
+  const skillR = await fetch("/api/skills",{headers:{"X-Sunday-Token":sundayToken}}).then(r=>r.json()).catch(()=>({skills:{},by_category:{},total:0}));
   const d = healthCache || {};
 
   const engCount = (d.engines||[]).length;
@@ -921,14 +995,14 @@ async function refreshMemory(){
   // fetch stats
   let stats = {};
   try{
-    const r = await fetch("/api/memory/stats", {headers:{"X-API-Key":apiKey}});
+    const r = await fetch("/api/memory/stats", {headers:{"X-Sunday-Token":sundayToken}});
     if(r.ok) stats = await r.json();
   }catch(e){}
 
   // fetch reflections
   let refs = [];
   try{
-    const r = await fetch("/api/memory/reflections?limit=10", {headers:{"X-API-Key":apiKey}});
+    const r = await fetch("/api/memory/reflections?limit=10", {headers:{"X-Sunday-Token":sundayToken}});
     if(r.ok){ const d = await r.json(); refs = d.reflections || []; }
   }catch(e){}
 
@@ -937,7 +1011,7 @@ async function refreshMemory(){
   try{
     const r = await fetch("/api/memory/search", {
       method:"POST",
-      headers:{"Content-Type":"application/json","X-API-Key":apiKey},
+      headers:{"Content-Type":"application/json","X-Sunday-Token":sundayToken},
       body:JSON.stringify({query:"*",k:15})
     });
     if(r.ok){ const d = await r.json(); recents = d.results || []; }
@@ -1013,7 +1087,7 @@ async function doReflect(){
     $("memoryView").innerHTML = '<div class="dash-grid"><div class="dash-card"><div class="d-val" style="font-size:16px">Running reflection...</div></div></div>';
     const r = await fetch("/api/memory/reflect", {
       method:"POST",
-      headers:{"Content-Type":"application/json","X-API-Key":apiKey},
+      headers:{"Content-Type":"application/json","X-Sunday-Token":sundayToken},
       body:JSON.stringify({force:true})
     });
     const d = await r.json();
@@ -1025,7 +1099,7 @@ async function doConsolidate(){
   try{
     const r = await fetch("/api/memory/consolidate", {
       method:"POST",
-      headers:{"X-API-Key":apiKey}
+      headers:{"X-Sunday-Token":sundayToken}
     });
     refreshMemory();
   }catch(e){}
@@ -1036,7 +1110,7 @@ async function refreshDebug(){
   if(!apiKey){ $("debugView").innerHTML = renderKeyPromptView("Debug 诊断视图"); return }
   let ov={};
   try{
-    const r=await fetch("/api/debug/overview",{headers:{"X-API-Key":apiKey}});
+    const r=await fetch("/api/debug/overview",{headers:{"X-Sunday-Token":sundayToken}});
     if(r.ok) ov=await r.json();
   }catch(e){}
 
@@ -1126,13 +1200,13 @@ function submitFbNote(msgPreview, engineId){
 input.addEventListener("input",()=>{input.style.height="auto";input.style.height=Math.min(input.scrollHeight,160)+"px";sendBtn.classList.toggle("on",!!input.value.trim())});
 input.addEventListener("keydown",e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();send()}});
 sendBtn.addEventListener("click",send);
-$("keyBtn").addEventListener("click",()=>{ensureKey(true);refreshConvList()});
+$("keyBtn").addEventListener("click",()=>{sundayToken="";apiKey="";localStorage.removeItem("sunday.token");localStorage.removeItem("sunday.key");renderEmpty();refreshConvList();location.reload()});
 
 // Mobile: start with sidebar closed
 if(isMobile()){sidebarOpen=false;applySidebarState();}
 
 applyLang();renderEmpty();ping();setInterval(ping,8000);
-if(!apiKey)setTimeout(()=>ensureKey(true),400);
+// Login is handled by renderEmpty()'s login card. No prompt() needed.
 refreshConvList();
 </script>
 </body>
