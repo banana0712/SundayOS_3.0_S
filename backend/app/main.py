@@ -67,9 +67,13 @@ app.add_middleware(
 #   - LINKAGE graph (who calls whom, in what order)
 # When you add a subsystem: add 1 field to Runtime + 1 entry to its linkage.
 from .runtime import Runtime
+from .log_engine import log
 
 ENGINES = build_engines()
 ROUTER = CognitiveRouter(ENGINES)
+
+# ── Startup: log the engine fleet ──────────────────────────────────────
+log.engine_startup(ENGINES)
 # Use SQLite-backed memory (persists across restarts). Falls back to in-memory
 # if db_path is not set or the SQLite store can't be opened.
 _db_path = os.getenv("SUNDAY_DB_PATH", "./sunday.db")
@@ -396,7 +400,8 @@ async def debug_env(x_api_key: str | None = Header(default=None)) -> dict:
     watched = [
         "SUNDAY_API_KEY", "SUNDAY_ALLOW_MOCK", "DEEPSEEK_API_KEY",
         "DEEPSEEK_BASE_URL", "QWEN_API_KEY", "OPENAI_API_KEY",
-        "ANTHROPIC_API_KEY",
+        "ANTHROPIC_API_KEY", "CUSTOM_API_KEY", "CUSTOM_BASE_URL",
+        "CUSTOM_MODEL", "CUSTOM_MODEL_REASONER",
     ]
     seen = {}
     for name in watched:
@@ -408,6 +413,82 @@ async def debug_env(x_api_key: str | None = Header(default=None)) -> dict:
         if any(tok in n.upper() for tok in ("KEY", "DEEPSEEK", "SUNDAY", "QWEN", "MOCK", "ANTHROPIC"))
     )
     return {"watched": seen, "keyish_names_present": keyish, "engines_built": [e.id for e in ENGINES]}
+
+
+@app.get("/api/debug/routing")
+async def debug_routing(msg: str = "你好",
+                         x_api_key: str | None = Header(default=None)) -> dict:
+    """Test router: which engine would answer this message RIGHT NOW?
+
+    Shows the full decision tree — eligible engines, scores, which one
+    gets picked first, and which fallback chain. Also makes a single test
+    call to verify the chosen engine actually works.
+
+    Query params:
+      msg  — test message to route (default: "你好")
+    """
+    _auth(x_api_key)
+
+    messages = [
+        EngineMessage(role="system", content="你是一个AI助手，用中文回答。"),
+        EngineMessage(role="user", content=msg),
+    ]
+    from .cognition.dispatch import needs_reasoner
+    complexity = Complexity.L3_DEEP if needs_reasoner("debug", msg) else Complexity.L2_DAILY
+    ranked, trace = ROUTER.plan(CognitiveRequest(
+        messages=messages, complexity=complexity, prefer_chinese=True))
+
+    # Try the first engine to verify it actually works
+    test_result = None
+    if ranked:
+        import time as _time
+        t0 = _time.monotonic()
+        try:
+            resp = await ranked[0].complete(messages, temperature=0.7)
+            test_result = {
+                "engine": ranked[0].id,
+                "model": getattr(ranked[0], "_model", "?"),
+                "base_url": getattr(ranked[0], "_base_url", "?"),
+                "reply": resp.text[:200],
+                "latency_ms": round((_time.monotonic() - t0) * 1000, 1),
+                "tokens": resp.prompt_tokens + resp.completion_tokens,
+            }
+            log.engine_call(ranked[0].id, test_result["latency_ms"],
+                          resp.prompt_tokens, resp.completion_tokens, 0,
+                          model=test_result["model"])
+        except Exception as exc:
+            test_result = {
+                "engine": ranked[0].id,
+                "model": getattr(ranked[0], "_model", "?"),
+                "error": f"{type(exc).__name__}: {str(exc)[:300]}",
+                "latency_ms": round((_time.monotonic() - t0) * 1000, 1),
+            }
+            log.engine_error(ranked[0].id, type(exc).__name__,
+                           f"{type(exc).__name__}: {str(exc)[:300]}")
+
+    return {
+        "test_message": msg,
+        "complexity": int(complexity),
+        "all_engines": [{
+            "id": e.id,
+            "model": getattr(e, "_model", "?"),
+            "base_url": getattr(e, "_base_url", "?"),
+            "caps": {
+                "function_calling": e.caps.function_calling,
+                "strong_reasoning": e.caps.strong_reasoning,
+                "max_context": e.caps.max_context,
+                "languages": list(e.caps.languages),
+            },
+            "price_in": e.price_in,
+            "price_out": e.price_out,
+        } for e in ENGINES],
+        "eligible": trace.candidates,
+        "scores": trace.scores,
+        "chosen": trace.chosen,
+        "reason": trace.reason,
+        "fallback_chain": [e.id for e in ranked[1:]] if len(ranked) > 1 else [],
+        "test_call": test_result,
+    }
 
 
 @app.get("/api/skills")
@@ -526,6 +607,11 @@ async def chat(req: ChatRequest, x_api_key: str | None = Header(default=None)) -
         system_prompt += f"\n\n{context_block}"
 
     react_steps = []
+    user_id = _resolve_user(x_api_key)
+    log.chat_request(user_id, len(req.message),
+                     "reasoner" if use_reasoner else "talker",
+                     int(complexity))
+
     if use_reasoner:
         # System 2: ReAct loop — Thought → Action → Observation
         react = ReActLoop(router=ROUTER, tools=TOOLS, memory_store=MEMORY, skills=SKILLS,
@@ -552,11 +638,18 @@ async def chat(req: ChatRequest, x_api_key: str | None = Header(default=None)) -
         }
         chosen_engine = "react-loop"
     else:
-        # System 1: single completion (unchanged)
+        # System 1: single completion
         messages = [
             EngineMessage(role="system", content=system_prompt),
             EngineMessage(role="user", content=req.message),
         ]
+        # Pre-route log: what the router sees
+        ranked, plan_trace = ROUTER.plan(CognitiveRequest(
+            messages=messages, complexity=complexity, prefer_chinese=True))
+        log.route_decision(int(complexity), plan_trace.candidates,
+                          plan_trace.scores, plan_trace.chosen,
+                          plan_trace.reason, req.message)
+
         result = await ROUTER.route(CognitiveRequest(
             messages=messages,
             complexity=complexity,
@@ -565,6 +658,7 @@ async def chat(req: ChatRequest, x_api_key: str | None = Header(default=None)) -
 
         if result.response is None:
             errors = result.trace.errors
+            log.chat_all_engines_failed(user_id, errors)
             if errors:
                 first_err = next(iter(errors.values()))
                 reply = f"[引擎调用失败] {first_err}"
@@ -582,7 +676,14 @@ async def chat(req: ChatRequest, x_api_key: str | None = Header(default=None)) -
             "latency_ms": result.trace.latency_ms,
             "errors": result.trace.errors,
         }
-        chosen_engine = result.trace.chosen or "none"  # L3 output PII filter
+        chosen_engine = result.trace.chosen or "none"
+
+        # Post-route log: what actually happened
+        log.chat_response(user_id, chosen_engine,
+                         trace.get("latency_ms", 0), len(reply or ""),
+                         trace.get("usage", {}).get("prompt_tokens", 0) +
+                         trace.get("usage", {}).get("completion_tokens", 0),
+                         trace.get("usage", {}).get("cost_usd", 0))
 
     # Record usage stats
     if use_reasoner:

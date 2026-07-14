@@ -210,8 +210,14 @@ class CognitiveRouter:
             except Exception as exc:  # noqa: BLE001 — degrade gracefully, try next
                 self.breaker.record_failure(engine.id)
                 trace.fallbacks_used.append(engine.id)
-                # capture the real reason so failures aren't silently swallowed
-                trace.errors[engine.id] = f"{type(exc).__name__}: {str(exc)[:300]}"
+                err_str = f"{type(exc).__name__}: {str(exc)[:300]}"
+                trace.errors[engine.id] = err_str
+                # Log the failure so it's visible in the console immediately
+                from app.log_engine import log as _log
+                _log.engine_error(engine.id, type(exc).__name__,
+                                  err_str, attempt=i + 1)
+                if i + 1 < len(ranked):
+                    _log.engine_fallback(engine.id, ranked[i + 1].id, err_str)
         trace.latency_ms = round((time.monotonic() - t0) * 1000, 1)
         trace.chosen = None
         return CognitiveResult(response=None, trace=trace)
