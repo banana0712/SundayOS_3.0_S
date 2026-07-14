@@ -10,12 +10,13 @@ import os
 from dotenv import load_dotenv
 from fastapi import FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, StreamingResponse, FileResponse
+from fastapi.responses import HTMLResponse, StreamingResponse, FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
 from pydantic import BaseModel
 
 from .webchat import CHAT_HTML
+from .pwa import MANIFEST_JSON, get_icon_svg
 
 from .cognition.belief import BeliefState
 from .cognition.dispatch import needs_reasoner, risk_level
@@ -214,6 +215,25 @@ class ChatRequest(BaseModel):
     role_hint: str | None = None
     voice_input: bool = False
     conversation_id: str | None = None
+
+
+# --- PWA manifest + icons ------------------------------------------------
+
+@app.get("/manifest.json")
+async def manifest() -> dict:
+    """PWA manifest — enables 'Add to Home Screen' on mobile."""
+    import json as _json
+    return _json.loads(MANIFEST_JSON)
+
+
+@app.get("/api/pwa/icon-{size}", response_class=Response)
+async def pwa_icon(size: int) -> Response:
+    """SVG icon at requested size — vector, scales to anything."""
+    from fastapi.responses import Response as FastAPIResponse
+    return FastAPIResponse(
+        content=get_icon_svg(size),
+        media_type="image/svg+xml",
+    )
 
 
 # --- static console files (built from Next.js with output:export) ----------

@@ -100,6 +100,19 @@ export function useNow(intervalMs = 1000) {
   return now;
 }
 
+// Mobile detection via matchMedia (fires only at breakpoint crossings — no resize spam)
+export function useIsMobile(breakpoint = 768) {
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia(`(max-width: ${breakpoint}px)`);
+    setIsMobile(mq.matches);
+    const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches);
+    mq.addEventListener("change", handler);
+    return () => mq.removeEventListener("change", handler);
+  }, [breakpoint]);
+  return isMobile;
+}
+
 // Static display — live data comes from backend polling, not client-side drift.
 // Previously used setInterval(120ms) × 5 instances = 40+ phantom re-renders/sec.
 export function useDrift(base: number, _amp = 0, _periodMs = 4000) {

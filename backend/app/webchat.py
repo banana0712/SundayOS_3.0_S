@@ -10,7 +10,10 @@ CHAT_HTML = r"""<!DOCTYPE html>
 <html lang="zh">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover,user-scalable=no" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="theme-color" content="#0B0B0C" />
 <title>Sunday</title>
 <style>
   :root{
@@ -20,11 +23,15 @@ CHAT_HTML = r"""<!DOCTYPE html>
     --accent:#0A84FF; --success:#30D158; --warning:#FFD60A; --danger:#FF453A;
     --font:-apple-system,BlinkMacSystemFont,"SF Pro Display","Segoe UI","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
     --sidebar-w: 268px;
+    --safe-top: env(safe-area-inset-top,0px);
+    --safe-bottom: env(safe-area-inset-bottom,0px);
+    --tap-min: 44px;
   }
   *{box-sizing:border-box;margin:0;padding:0}
   html,body{height:100%}
   body{background:var(--bg);color:var(--text);font-family:var(--font);
-    -webkit-font-smoothing:antialiased;display:flex;height:100dvh;overflow:hidden}
+    -webkit-font-smoothing:antialiased;display:flex;height:100dvh;overflow:hidden;
+    -webkit-tap-highlight-color:transparent;-webkit-overflow-scrolling:touch}
   body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:0;
     background:radial-gradient(1100px 600px at 78% -8%,rgba(10,132,255,.09),transparent 60%),
       radial-gradient(900px 500px at 8% 108%,rgba(48,209,88,.05),transparent 55%)}
@@ -136,11 +143,62 @@ CHAT_HTML = r"""<!DOCTYPE html>
   .dash-badge.err{background:rgba(255,69,58,.15);color:var(--danger)}
   .dash-badge.info{background:rgba(10,132,255,.15);color:var(--accent)}
 
-  /* ── responsive ──────────────────────────── */
-  @media (max-width:640px){
-    #sidebar{position:fixed;left:0;top:0;bottom:0;z-index:10;box-shadow:0 0 40px rgba(0,0,0,.5)}
-    #sidebar.collapsed{display:none}
-    .bubble{max-width:90%}
+  /* ── mobile-first responsive system ──────── */
+  /* Industry standards 2025-2026: dvh, clamp(), safe-area, container queries */
+  @media (max-width: 768px) {
+    /* Sidebar → off-canvas overlay with backdrop */
+    #sidebar{
+      position:fixed;left:0;top:0;bottom:0;z-index:20;
+      box-shadow:0 0 60px rgba(0,0,0,.6);
+      background:rgba(21,21,24,.95);backdrop-filter:blur(32px);
+      transform:translateX(0);transition:transform .3s cubic-bezier(.22,1,.36,1);
+    }
+    #sidebar.collapsed{transform:translateX(-100%)}
+    /* Backdrop overlay when sidebar is open */
+    #sidebar:not(.collapsed)::after{
+      content:"";position:fixed;inset:0;left:var(--sidebar-w);z-index:-1;
+      background:rgba(0,0,0,.4);pointer-events:auto;
+    }
+    /* Show expand button */
+    #expandBtn{display:flex!important}
+    /* Full-width bubbles */
+    .bubble{max-width:92%!important}
+    /* Header */
+    header{padding:8px 12px;padding-top:calc(var(--safe-top) + 8px)}
+    .htxt b{font-size:14px}
+    .hbtn{padding:4px 8px;font-size:11px}
+    .lang-group button{padding:4px 7px;font-size:11px}
+    /* Main scroll area */
+    main{padding:12px 10px;padding-bottom:calc(var(--safe-bottom) + 80px)}
+    /* Footer / composer */
+    footer{padding:8px 10px calc(var(--safe-bottom) + 12px);position:sticky;bottom:0}
+    .composer{padding:6px 6px 6px 12px;border-radius:16px}
+    textarea{font-size:16px!important;line-height:1.4} /* 16px prevents iOS zoom */
+    .send{width:34px;height:34px}
+    /* Console / dashboard mobile */
+    .dash-grid{grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px;padding:8px}
+    .dash-card{padding:12px;border-radius:12px}
+    .dash-card .d-val{font-size:22px}
+    .dash-section{margin:4px 8px}
+    .dash-table th,.dash-table td{padding:6px 8px;font-size:11px}
+    /* Conversation sidebar items */
+    .conv-item{padding:8px 10px}
+    .conv-item .c-title{font-size:12px}
+    /* Hide non-essential header items */
+    .conn{font-size:10px}
+    .status-bar{font-size:9px;gap:8px}
+  }
+
+  /* ── tiny screens (< 400px) ───────────────── */
+  @media (max-width: 400px) {
+    .mark{width:28px;height:28px;border-radius:9px}
+    .htxt b{font-size:13px}
+    .hbtn{padding:3px 6px;font-size:10px}
+    .lang-group{display:none} /* hide on very small screens, keep in header dropdown */
+    .dash-grid{grid-template-columns:1fr}
+    .bubble{max-width:96%!important;padding:8px 12px;font-size:14px}
+    textarea{font-size:16px!important}
+    .send{width:32px;height:32px}
   }
 </style>
 </head>
