@@ -35,13 +35,13 @@ def build_engines() -> list:
         engines.append(OpenAICompatibleProvider(
             id="deepseek-chat", api_key=ds_key, base_url=base, model="deepseek-chat",
             caps=EngineCapabilities(function_calling=True, max_context=64_000,
-                                    languages=("zh", "en")),
+                                    languages=("zh", "en"), quality=0.55),
             price_in=0.27, price_out=1.10,
         ))
         engines.append(OpenAICompatibleProvider(
             id="deepseek-reasoner", api_key=ds_key, base_url=base, model="deepseek-reasoner",
             caps=EngineCapabilities(strong_reasoning=True, max_context=64_000,
-                                    languages=("zh", "en")),
+                                    languages=("zh", "en"), quality=0.65),
             price_in=0.55, price_out=2.19,
         ))
 
@@ -57,7 +57,8 @@ def build_engines() -> list:
         engines.append(OpenAICompatibleProvider(
             id="sunday-chat", api_key=custom_key, base_url=base, model=model,
             caps=EngineCapabilities(function_calling=True, max_context=128_000,
-                                    languages=("zh", "en")),
+                                    languages=("zh", "en"),
+                                    quality=0.85, primary=True),
             price_in=0, price_out=0,
         ))
         reasoner_model = env("CUSTOM_MODEL_REASONER")
@@ -66,7 +67,8 @@ def build_engines() -> list:
                 id="sunday-reasoner", api_key=custom_key, base_url=base,
                 model=reasoner_model,
                 caps=EngineCapabilities(strong_reasoning=True, max_context=128_000,
-                                        languages=("zh", "en")),
+                                        languages=("zh", "en"),
+                                        quality=0.88, primary=True),
                 price_in=0, price_out=0,
             ))
 
@@ -76,7 +78,8 @@ def build_engines() -> list:
             id="qwen-plus", api_key=qwen_key,
             base_url=env("QWEN_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1"),
             model="qwen-plus",
-            caps=EngineCapabilities(function_calling=True, languages=("zh", "en")),
+            caps=EngineCapabilities(function_calling=True, languages=("zh", "en"),
+                                    quality=0.60),
             price_in=0.4, price_out=1.2,
         ))
 
@@ -87,7 +90,7 @@ def build_engines() -> list:
             base_url=env("OPENAI_BASE_URL", "https://api.openai.com/v1"),
             model="gpt-4o",
             caps=EngineCapabilities(function_calling=True, strong_reasoning=True,
-                                    max_context=128_000),
+                                    max_context=128_000, quality=0.85),
             price_in=2.5, price_out=10.0,
         ))
 
@@ -97,7 +100,7 @@ def build_engines() -> list:
             id="claude-opus", api_key=ant_key, model="claude-opus-4-20250514",
             base_url=env("ANTHROPIC_BASE_URL") or None,
             caps=EngineCapabilities(function_calling=True, strong_reasoning=True,
-                                    max_context=200_000),
+                                    max_context=200_000, quality=0.92),
             price_in=15.0, price_out=75.0,
         ))
 

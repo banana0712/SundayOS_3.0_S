@@ -473,6 +473,8 @@ async def debug_routing(msg: str = "你好",
             "id": e.id,
             "model": getattr(e, "_model", "?"),
             "base_url": getattr(e, "_base_url", "?"),
+            "quality": e.caps.quality,
+            "primary": e.caps.primary,
             "caps": {
                 "function_calling": e.caps.function_calling,
                 "strong_reasoning": e.caps.strong_reasoning,

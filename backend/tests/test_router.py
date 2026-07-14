@@ -34,7 +34,7 @@ def test_l1_prefers_cheap_engine():
     r = CognitiveRouter([_cheap_weak(), _expensive_strong()])
     ranked, trace = r.plan(CognitiveRequest(messages=_msg("你好"), complexity=Complexity.L1_INSTANT))
     assert ranked[0].id == "cheap"
-    assert "cost-weighted" in trace.reason
+    assert "balanced" in trace.reason
 
 
 def test_l3_prefers_strong_engine():

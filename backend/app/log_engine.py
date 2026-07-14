@@ -76,6 +76,8 @@ class Logger:
         _emit("INFO", "startup", engines=[
             {"id": e.id, "model": getattr(e, "_model", "?"),
              "base_url": getattr(e, "_base_url", "?"),
+             "quality": e.caps.quality,
+             "primary": e.caps.primary,
              "caps": {
                  "fc": e.caps.function_calling,
                  "reasoning": e.caps.strong_reasoning,

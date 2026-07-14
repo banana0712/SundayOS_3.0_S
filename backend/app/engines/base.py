@@ -38,6 +38,13 @@ class EngineCapabilities:
     strong_reasoning: bool = False
     local: bool = False
     languages: tuple[str, ...] = ("en", "zh")
+    # ── Quality metadata (user-assigned or observed) ──
+    # 0.0-1.0: perceived conversational / reasoning quality.
+    # Engines with higher quality get priority in routing (not just cost).
+    quality: float = 0.5
+    # If True, this engine is the user's designated primary for its tier.
+    # The router gives it a bonus and always tries it first in fallback.
+    primary: bool = False
 
 
 @dataclass

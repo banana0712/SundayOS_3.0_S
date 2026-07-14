@@ -12,13 +12,22 @@ from dataclasses import dataclass, field
 from .base import Complexity, EngineMessage, EngineProvider, EngineResponse
 
 
-# --- Complexity weight table (docs §3.5) ------------------------------------
-#                         w_cap  w_cost  w_lat  w_avail
-WEIGHTS: dict[Complexity, tuple[float, float, float, float]] = {
-    Complexity.L1_INSTANT: (0.2, 0.5, 0.3, 0.3),
-    Complexity.L2_DAILY:   (0.3, 0.4, 0.3, 0.3),
-    Complexity.L3_DEEP:    (0.6, 0.2, 0.1, 0.3),
-    Complexity.L4_CRITICAL:(0.8, 0.05, 0.05, 0.4),
+# --- Quality-first weight table (ADR-011) -----------------------------------
+# Each tuple = (w_quality, w_cap, w_cost, w_lat, w_avail)
+# Quality is the PRIMARY axis for chat. Cost only gates extreme outliers.
+#
+# Philosophy: "Pick the best model for the task, not the cheapest one."
+# Research base: Cascade Routing + Quality-Aware selection (FutureAGI 2026,
+# Microsoft Foundry Model Router, Multi-LLM Prototype arXiv 2026).
+WEIGHTS: dict[Complexity, tuple[float, float, float, float, float]] = {
+    # L1 trivial tasks: still OK to optimize cost, but quality matters
+    Complexity.L1_INSTANT: (0.25, 0.15, 0.30, 0.20, 0.30),
+    # L2 daily chat: quality FIRST — this is the companion experience
+    Complexity.L2_DAILY:   (0.40, 0.20, 0.10, 0.15, 0.30),
+    # L3 deep reasoning: capability + quality dominate
+    Complexity.L3_DEEP:    (0.35, 0.35, 0.05, 0.10, 0.30),
+    # L4 critical: maximum quality, zero cost consideration
+    Complexity.L4_CRITICAL:(0.50, 0.30, 0.00, 0.05, 0.35),
 }
 
 _CODE_RE = re.compile(r"```|def |class |import |SELECT |function ")
@@ -133,27 +142,32 @@ class CognitiveRouter:
             out.append(e)
         return out
 
-    # -- scoring (docs §3.5) -------------------------------------------------
+    # -- scoring (docs §3.5, ADR-011 quality-first) ----------------------------
     @staticmethod
     def _capability(e: EngineProvider, req: CognitiveRequest) -> float:
+        """Capability score: reasoning + tools + language + quality."""
         cap = 0.0
+        # Base quality (user-assigned or inferred, 0.0-1.0)
+        cap += e.caps.quality * 0.5
         if e.caps.strong_reasoning:
-            cap += 0.6
+            cap += 0.3
         if e.caps.function_calling:
-            cap += 0.2
+            cap += 0.1
         if req.prefer_chinese and "zh" in e.caps.languages:
-            cap += 0.2
+            cap += 0.1
+        # Primary engine bonus: user's designated favorite gets a boost
+        if e.caps.primary:
+            cap += 0.15
         return min(cap, 1.0)
 
     def _score_all(
         self, engines: list[EngineProvider], req: CognitiveRequest, complexity: Complexity
     ) -> dict[str, float]:
-        """Batch scoring. Cost & latency are min-max normalized ACROSS the
-        candidate set so they discriminate regardless of absolute token size
-        (a tiny prompt still makes the pricey engine score ~1 on cost)."""
+        """Batch scoring. Quality + Capability weighted high, cost/latency
+        act as soft constraints (ADR-011: quality-first)."""
         if not engines:
             return {}
-        w_cap, w_cost, w_lat, w_avail = WEIGHTS[complexity]
+        w_qual, w_cap, w_cost, w_lat, w_avail = WEIGHTS[complexity]
         est_in = estimate_tokens(req.messages)
         est_out = min(1024, est_in)
 
@@ -165,7 +179,9 @@ class CognitiveRouter:
         scores: dict[str, float] = {}
         for i, e in enumerate(engines):
             cap = self._capability(e, req)
-            s = (w_cap * cap) - (w_cost * cost_n[i]) - (w_lat * lat_n[i]) + (w_avail * 1.0)
+            # Quality score: both explicit (caps.quality) and implicit (capability)
+            qual = e.caps.quality  # 0.0-1.0
+            s = (w_qual * qual) + (w_cap * cap) - (w_cost * cost_n[i]) - (w_lat * lat_n[i]) + (w_avail * 1.0)
             scores[e.id] = round(s, 4)
         return scores
 
@@ -230,7 +246,9 @@ def _explain(complexity: Complexity, req: CognitiveRequest) -> str:
     if req.require_tools:
         bits.append("tools required")
     if complexity >= Complexity.L3_DEEP:
-        bits.append("capability-weighted")
+        bits.append("capability-weighted (ADR-011 quality-first)")
+    elif complexity == Complexity.L2_DAILY:
+        bits.append("quality-first (ADR-011)")
     else:
-        bits.append("cost-weighted")
+        bits.append("balanced (ADR-011)")
     return ", ".join(bits)
