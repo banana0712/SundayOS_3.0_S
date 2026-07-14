@@ -168,7 +168,7 @@ export function MemoryView() {
               const Icon = TYPE_ICONS[type] || Circle;
               return (
                 <div key={type} className="flex items-center gap-1.5 rounded-full border border-border px-2.5 py-1 text-[11px] text-secondary">
-                  <Icon className="h-3 w-3" style={{ color: TYPE_COLORS[type] || "var(--ter)" }} />
+                  <Icon className="h-3 w-3" style={{ color: TYPE_COLORS[type] || "var(--text-tertiary)" }} />
                   {type}: <span className="font-medium text-primary">{count}</span>
                 </div>
               );
@@ -183,7 +183,7 @@ export function MemoryView() {
           )}
           {results.map((hit) => {
             const Icon = TYPE_ICONS[hit.type] || Circle;
-            const color = TYPE_COLORS[hit.type] || "var(--ter)";
+            const color = TYPE_COLORS[hit.type] || "var(--text-tertiary)";
             const isSel = selected?.id === hit.id;
             return (
               <motion.button

@@ -37,8 +37,9 @@ export function ConsoleDock() {
       const d = new Date();
       const t = d.toLocaleTimeString("en-GB", { hour12: false }) + "." +
         String(d.getMilliseconds()).padStart(3, "0");
+      const nextId = idRef.current++;
       setLines((prev) => {
-        const next = [...prev, { ...s, id: idRef.current++, t }];
+        const next = [...prev, { ...s, id: nextId, t }];
         return next.slice(-60);
       });
     };

@@ -21,6 +21,8 @@ __pycache__/
 .venv/
 venv/
 *.db
+*.db-shm
+*.db-wal
 sunday.db
 
 # --- Node / Next.js (console) ---

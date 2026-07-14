@@ -10,6 +10,54 @@
 
 ---
 
+## [0.8.0] — 2026-07-15
+
+### Added
+- **用户账号系统** (`app/auth/__init__.py`)：注册/登录/token 认证
+  - pbkdf2_sha256 密码哈希（stdlib，零依赖）
+  - `POST /api/auth/register` + `/api/auth/login` + `/api/auth/me`
+  - Token 存 localStorage，跨页面自动登录
+  - Webchat 登录/注册卡片（替换 prompt 弹窗）
+- **反馈学习系统** (ADR-012)：
+  - `app/persona/preferences.py`：UserPreferences + SQLite 存储
+  - `app/persona/feedback_parser.py`：LLM 驱动的自然语言反馈解析
+  - 每次聊天注入个性化偏好到 system prompt（PLUS/VAC 范式）
+  - Webchat 👍👎 按钮 + 👎 文字反馈
+- **自然多气泡消息** (`app/cognition/burst_split.py`)：
+  - 按段落/句子拆分 AI 回复 → 多气泡陆续发出
+  - 随机延迟（300-900ms）+ 打字指示符 → 活人感
+  - 无字数上限，自然断点不拆碎（Stephanie NAACL 2025）
+- **质量优先路由** (ADR-011)：
+  - `EngineCapabilities.quality` + `primary` 字段
+  - L2 日常对话质量权重 40%、成本权重 10%
+  - 引擎标签（豆包 quality=0.85 primary）
+- **自定义引擎** (`CUSTOM_API_KEY` + `CUSTOM_BASE_URL` + `CUSTOM_MODEL`)
+  - 火山引擎豆包 `doubao-seed-character-260628`
+- **结构化运行日志** (`app/log_engine.py`)：JSON 格式 + 5MB 自动轮转
+- **路由调试端点**：`GET /api/debug/routing?msg=hello`
+- `POST /api/feedback` + `GET /api/preferences`
+
+### Changed
+- 移动端全面重设计：底部导航栏、sidebar 遮罩修复、44px 触摸目标、键盘适配
+- 认证系统：单 Key → Token 双轨制（Token + API Key 兼容）
+- Webchat 存储键：`sunday.key` → `sunday.token`（向后兼容）
+- Console：CSS 媒体查询驱动双 Shell（消除 SSR 水合闪烁）
+
+### Fixed
+- **安全**：会话/记忆的 GET/DELETE/PUT 新增 user_id 所有权校验
+- **安全**：chat 端点错误回复不再暴露引擎内部异常详情
+- **PWA**：manifest 链接修复 + icon size 参数化
+- 删除数据库文件（WAL/SHM）不再被 Git 追踪
+
+### Optimized
+- 3 个安全漏洞修补（会话/记忆越权访问 + 引擎错误泄露）
+- `.gitignore` 补全：`*.db-shm`、`*.db-wal`
+- 移除 Console 中未使用的 `useIsMobile` 导入
+- 修复 memory.tsx CSS 变量拼写错误 `--ter` → `--text-tertiary`
+- 修复 console-dock.tsx 中 setState 回调内的副作用（idRef）
+
+---
+
 ## [0.7.0] — 2026-07-14
 
 ### Added

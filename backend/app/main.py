@@ -85,6 +85,8 @@ _db_path = os.getenv("SUNDAY_DB_PATH", "./sunday.db")
 try:
     MEMORY = SQLiteMemoryStore(db_path=_db_path)
 except Exception:
+    log.warn("startup", event="memory_sqlite_fallback",
+             detail="SQLite store init failed, falling back to in-memory MemoryStore")
     MEMORY = MemoryStore()
 CONV = ConversationStore()
 API_KEY = os.getenv("SUNDAY_API_KEY", "change-me-in-production")
@@ -816,9 +818,9 @@ async def chat(req: ChatRequest, x_api_key: str | None = Header(default=None), x
             log.chat_all_engines_failed(user_id, errors)
             if errors:
                 first_err = next(iter(errors.values()))
-                reply = f"[引擎调用失败] {first_err}"
+                reply = "引擎暂时不可用，请稍后重试。"
             else:
-                reply = "所有引擎当前不可用，请稍后重试。"
+                reply = "引擎暂时不可用，请稍后重试。"
         else:
             reply, _ = redact_pii(result.response.text)
 
@@ -1059,6 +1061,8 @@ async def conversation_get(conv_id: str,
     conv = CONV.get(conv_id)
     if conv is None:
         raise HTTPException(status_code=404, detail="conversation not found")
+    if conv.user_id != user_id:
+        raise HTTPException(status_code=404, detail="conversation not found")
     return {
         "id": conv.id,
         "title": conv.title,
@@ -1074,6 +1078,9 @@ async def conversation_get(conv_id: str,
 async def conversation_delete(conv_id: str,
                               x_api_key: str | None = Header(default=None), x_sunday_token: str | None = Header(default=None, alias="X-Sunday-Token")) -> dict:
     user_id = _auth(x_api_key, x_sunday_token)
+    conv = CONV.get(conv_id)
+    if conv is None or conv.user_id != user_id:
+        raise HTTPException(status_code=404, detail="conversation not found")
     return {"deleted": CONV.delete(conv_id)}
 
 
@@ -1085,6 +1092,9 @@ class ConversationRenameRequest(BaseModel):
 async def conversation_rename(conv_id: str, req: ConversationRenameRequest,
                               x_api_key: str | None = Header(default=None), x_sunday_token: str | None = Header(default=None, alias="X-Sunday-Token")) -> dict:
     user_id = _auth(x_api_key, x_sunday_token)
+    conv = CONV.get(conv_id)
+    if conv is None or conv.user_id != user_id:
+        raise HTTPException(status_code=404, detail="conversation not found")
     ok = CONV.rename(conv_id, req.title)
     if not ok:
         raise HTTPException(status_code=404, detail="conversation not found")
@@ -1257,7 +1267,7 @@ async def memory_stats(x_api_key: str | None = Header(default=None), x_sunday_to
     """Return memory statistics — count by type, embedder info."""
     user_id = _auth(x_api_key, x_sunday_token)
     from .memory.embedding import embedding_dim as edim, embed as emb_fn
-    all_nodes = MEMORY.all()
+    all_nodes = MEMORY.all(user_id)
     by_type: dict[str, int] = {}
     for n in all_nodes:
         by_type[str(n.type.value)] = by_type.get(str(n.type.value), 0) + 1
@@ -1274,4 +1284,7 @@ async def memory_stats(x_api_key: str | None = Header(default=None), x_sunday_to
 @app.delete("/api/memory/{mem_id}")
 async def memory_delete(mem_id: str, x_api_key: str | None = Header(default=None), x_sunday_token: str | None = Header(default=None, alias="X-Sunday-Token")) -> dict:
     user_id = _auth(x_api_key, x_sunday_token)
+    node = MEMORY.get(mem_id)
+    if node is None or node.user_id != user_id:
+        raise HTTPException(status_code=404, detail="memory not found")
     return {"deleted": MEMORY.delete(mem_id)}

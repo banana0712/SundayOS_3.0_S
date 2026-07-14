@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, lazy, Suspense, useState } from "react";
-import { UIProvider, useUI, useIsMobile } from "@/store/ui";
+import { UIProvider, useUI } from "@/store/ui";
 import { I18nProvider } from "@/i18n";
 import { ensureApiKey } from "@/lib/api-key";
 import { Sidebar } from "./sidebar";
