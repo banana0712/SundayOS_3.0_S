@@ -1,8 +1,8 @@
 # ROADMAP.md · Sunday OS 开发路线图
 
-> 基于当前实际进度（见 [CURRENT_STATE.md](CURRENT_STATE.md)）制定的开发计划。遵循渐进式演进原则：复杂度与已验证价值成正比，先骨架后血肉。
+> 基于当前实际进度（见 [CURRENT_STATE.md](CURRENT_STATE.md)）制定的开发计划。
 
-**版本** 1.0 · **最后更新** 2026-07-13
+**版本** 1.1 · **最后更新** 2026-07-15
 
 ---
 
@@ -10,11 +10,44 @@
 
 | 里程碑 | 状态 | 完成度 |
 |--------|------|--------|
-| 工程文档体系 | ✅ | 7 文件 + ADR 索引 + 调试说明书 |
-| Phase 1 · 心智骨架 | 🟡 | ~90% |
+| 工程文档体系 | ✅ | 10 文件 + ADR 索引 + 调试说明书 |
+| Phase 1 · 心智骨架 | ✅ | ~95% |
+| Phase 1.5 · 反馈学习系统 (ADR-012) | 🟡 | ~60%（今晚完成核心通路） |
 | Phase 2 · 认知增强 | ⬜ | 0% |
 | Phase 3 · 体验进化 | ⬜ | 0% |
-| Phase 4 · 生态完善 | ⬜ | 0% |
+
+### 2026-07-15 变更摘要
+
+| 模块 | 状态 | 说明 |
+|------|------|------|
+| 偏好档案存储 | ✅ | UserPreferences + PreferenceStore (SQLite) |
+| NL 反馈解析器 | ✅ | LLM 驱动的 parse_feedback() |
+| 偏好注入 prompt | ✅ | build_prompt_with_prefs() → 每次聊天自动注入 |
+| 反馈 API | ✅ | POST /api/feedback + GET /api/preferences |
+| 反馈 UI | ✅ | webchat 👍👎 按钮 + 文字反馈 |
+| ADR-012 | ✅ | 完整架构决策文档 |
+| 移动端重设计 | ✅ | 底部导航、sidebar overlay、键盘适配、44px 触摸 |
+| 豆包引擎 | ✅ | sunday-chat (quality=0.85, primary=True) → 火山引擎 |
+| 质量优先路由 | ✅ | ADR-011: L2 日常质量权重 40%、成本 10% |
+| 运行日志 | ✅ | 结构化 JSON logger + /api/debug/routing 调试端点 |
+
+### 长期路线图
+
+#### Phase 2：隐式行为信号（当前未实现）
+- [ ] 重问同样问题 → 自动 👎 信号
+- [ ] 秒回下一条 → 自动 👍 信号
+- [ ] 语义漂移检测（切话题 = 对上一个回复不满意）
+- [ ] SSF（Self-Supervised Feedback）：AI 自评回复质量
+
+#### Phase 3：闭环验证（当前未实现）
+- [ ] CPS 跟踪面板：反馈前后对话轮次变化
+- [ ] 偏好衰减：30 天未确认 → confidence → 0
+- [ ] A/B 对比：同一 prompt 不同引擎输出对比
+
+#### Phase 4：全栈自适应（当前未实现）
+- [ ] Per-scenario 偏好矩阵（早晨 vs 晚上）
+- [ ] 隐式偏好发现：LLM 定期分析聊天记录
+- [ ] 偏好冲突检测与提醒
 
 ---
 
