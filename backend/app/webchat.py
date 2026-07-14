@@ -226,6 +226,21 @@ CHAT_HTML = r"""<!DOCTYPE html>
     .sb-header .new-btn{min-height:44px;font-size:14px}
     /* Status bar */
     .status-bar{font-size:10px;gap:8px}
+    /* Feedback buttons — subtle, expand on hover */
+    .feedback-row{display:flex;gap:4px;margin-top:6px;opacity:0.35;transition:opacity .2s}
+    .bubble:hover .feedback-row,.feedback-row:hover{opacity:1}
+    .fb-btn{background:none;border:1px solid var(--border);border-radius:14px;padding:2px 10px;
+      font-size:12px;cursor:pointer;color:var(--sec);transition:.15s;min-height:28px;
+      -webkit-user-select:none;user-select:none}
+    .fb-btn:hover{background:var(--surface2);border-color:var(--border2);color:var(--text)}
+    .fb-btn.active{background:var(--accent);border-color:var(--accent);color:#fff!important;opacity:1}
+    .fb-note{display:flex;align-items:center;gap:6px;margin-top:4px;padding:4px 8px;
+      border-radius:10px;background:var(--surface);border:1px solid var(--border);animation:fadeIn .2s}
+    .fb-note textarea{flex:1;background:none;border:none;outline:none;color:var(--text);
+      font-size:12px;font-family:var(--font);resize:none;min-height:24px;padding:2px 0}
+    .fb-note button{background:var(--accent);border:none;color:#fff;border-radius:8px;
+      padding:3px 10px;font-size:11px;cursor:pointer;min-height:28px}
+    @keyframes fadeIn{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:translateY(0)}}
     /* Reduce motion if user prefers */
     @media (prefers-reduced-motion:reduce){
       #sidebar,#backdrop{transition:none!important}
@@ -512,10 +527,12 @@ async function deleteConv(id){
 }
 
 // ── messages ───────────────────────────────────
-function addMsg(role,text,meta,isErr){
+function addMsg(role,text,meta,isErr,engineId){
   if(wrap.querySelector(".empty"))wrap.innerHTML="";
   const row=document.createElement("div");
   row.className="row "+(role==="me"?"me":(isErr?"ai err":"ai"));
+  // Store engine_id as data attr for feedback
+  if(engineId) row.setAttribute("data-engine", engineId);
   const inner=role==="me"
     ?`<div><div class="bubble"></div></div>`
     :`<div class="av">☀️</div><div><div class="bubble"></div>${meta?`<div class="meta">${meta}</div>`:""}</div>`;
@@ -525,9 +542,21 @@ function addMsg(role,text,meta,isErr){
     const errDiv=document.createElement("div");
     errDiv.className="err-detail";errDiv.textContent="⚠ "+t("errEngine");
     row.querySelector(".meta")?.after(errDiv)}
+  // Feedback buttons for AI replies (not errors, not typing indicator)
+  if(role==="ai"&&!isErr&&text&&!text.includes('[mock')){
+    const fbRow=document.createElement("div");
+    fbRow.className="feedback-row";
+    const msgPreview=text.substring(0,60);
+    fbRow.innerHTML=
+      `<button class="fb-btn" onclick="event.stopPropagation();rateReply(1,'${escAttr(msgPreview)}','${engineId||''}',this)" title="有帮助">👍</button>`+
+      `<button class="fb-btn fb-dislike" onclick="event.stopPropagation();rateReply(-1,'${escAttr(msgPreview)}','${engineId||''}',this)" title="不太对">👎</button>`;
+    row.querySelector(".bubble")?.parentElement?.appendChild(fbRow);
+  }
   wrap.appendChild(row);
   main.scrollTop=main.scrollHeight;
   return row}
+
+function escAttr(s){return s.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/'/g,'&#39;').replace(/</g,'&lt;')}
 
 // ── chat ───────────────────────────────────────
 let sending=false;
@@ -606,6 +635,15 @@ async function send(){
       metaDiv.className="meta";
       metaDiv.innerHTML=eng+sysTag;
       bubbleRow.appendChild(metaDiv);
+      // Feedback buttons for SSE replies
+      if(streamedText&&!streamedText.includes('[mock')){
+        const fbRow=document.createElement("div");
+        fbRow.className="feedback-row";
+        fbRow.innerHTML=
+          `<button class="fb-btn" onclick="event.stopPropagation();rateReply(1,'${escAttr(streamedText.substring(0,60))}','${escAttr(streamEngine||'')}',this)" title="有帮助">👍</button>`+
+          `<button class="fb-btn fb-dislike" onclick="event.stopPropagation();rateReply(-1,'${escAttr(streamedText.substring(0,60))}','${escAttr(streamEngine||'')}',this)" title="不太对">👎</button>`;
+        bubbleRow.querySelector(".bubble")?.parentElement?.appendChild(fbRow);
+      }
     }else{
       // Fallback: non-streaming
       const d=await r.json();
@@ -615,7 +653,7 @@ async function send(){
       const eng=d.engine?d.engine+" ":"";
       const hasErr=d.trace&&d.trace.errors&&Object.keys(d.trace.errors).length>0;
       const errTag=hasErr?`<span class="tag err">⚠ ${t("errEngine")}</span>`:"";
-      addMsg("ai",d.reply||t("errNet"),eng+sysTag+errTag,hasErr);
+      addMsg("ai",d.reply||t("errNet"),eng+sysTag+errTag,hasErr,d.engine);
       if(hasErr&&d.trace&&d.trace.errors){
         const row=wrap.lastElementChild;
         const errs=Object.entries(d.trace.errors).map(([eid,msg])=>`${eid}: ${msg}`).join(" · ");
@@ -968,6 +1006,48 @@ async function refreshDebug(){
       🔧 Debug View — <a href="/docs" target="_blank" style="color:var(--accent)">Swagger UI /docs</a> · <a href="/api/debug/env" style="color:var(--accent)">Env Diagnostic</a>
     </p>
   `;
+}
+
+// ── feedback ────────────────────────────────────
+function rateReply(rating, msgPreview, engineId, btnEl){
+  if(!apiKey) return;
+  // Mark button active
+  if(btnEl){
+    const row=btnEl.parentElement;
+    row.querySelectorAll('.fb-btn').forEach(b=>b.classList.remove('active'));
+    btnEl.classList.add('active');
+  }
+  const url=location.origin+'/api/feedback';
+  if(rating<0){
+    // 👎 — show a text input for explanation
+    const existing=document.querySelector('.fb-note');
+    if(existing) existing.remove();
+    const note=document.createElement('div');
+    note.className='fb-note';
+    note.innerHTML=`
+      <textarea rows="1" placeholder="哪里不满意？（可选，回车提交）" id="fbTextInput"
+        onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();submitFbNote('${escAttr(msgPreview)}','${engineId}')}"></textarea>
+      <button onclick="submitFbNote('${escAttr(msgPreview)}','${engineId}')">提交</button>`;
+    btnEl.parentElement?.after(note);
+    document.getElementById('fbTextInput')?.focus();
+  }else{
+    // 👍 — submit immediately
+    fetch(url,{method:'POST',
+      headers:{'Content-Type':'application/json','X-API-Key':apiKey},
+      body:JSON.stringify({rating:1,msg_preview:msgPreview,engine_id:engineId})
+    }).catch(()=>{});
+  }
+}
+
+function submitFbNote(msgPreview, engineId){
+  const inp=document.getElementById('fbTextInput');
+  const text=inp?.value.trim()||'';
+  const note=document.querySelector('.fb-note');
+  note?.remove();
+  fetch(location.origin+'/api/feedback',{method:'POST',
+    headers:{'Content-Type':'application/json','X-API-Key':apiKey},
+    body:JSON.stringify({rating:-1,feedback_text:text,msg_preview:msgPreview,engine_id:engineId})
+  }).catch(()=>{});
 }
 
 // ── init ───────────────────────────────────────

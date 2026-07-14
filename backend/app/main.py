@@ -17,6 +17,8 @@ from pydantic import BaseModel
 
 from .webchat import CHAT_HTML
 from .pwa import MANIFEST_JSON, get_icon_svg
+from .persona.preferences import PreferenceStore
+from .persona.feedback_parser import parse_feedback
 
 from .cognition.belief import BeliefState
 from .cognition.dispatch import needs_reasoner, risk_level
@@ -35,7 +37,8 @@ from .memory.experience import run_experience_layer
 from .cognition.tools import TOOLS, SKILLS, _memory_search_handler
 from .cognition.react_loop import ReActLoop, ReActResult
 from .cognition.context_builder import build_context, AssembledContext
-from .persona import build_system_prompt, load as load_persona, reload as reload_persona, version as persona_version
+from .persona import build_system_prompt, build_prompt_with_prefs, get_user_preferences
+from .persona import load as load_persona, reload as reload_persona, version as persona_version
 from .persona.empathy import run_empathy_pipeline, analyze_user as empathy_analyze
 
 load_dotenv(override=True)
@@ -83,6 +86,13 @@ except Exception:
     MEMORY = MemoryStore()
 CONV = ConversationStore()
 API_KEY = os.getenv("SUNDAY_API_KEY", "change-me-in-production")
+
+# ── Preference store (ADR-012) ───────────────────────────────────────
+# Reuses the SQLite connection from MEMORY if available; otherwise creates
+# a standalone connection for preference data.
+import sqlite3 as _sqlite3
+_PREF_DB = MEMORY._conn if hasattr(MEMORY, "_conn") else _sqlite3.connect(os.getenv("SUNDAY_DB_PATH", "./sunday.db"))
+PREF_STORE = PreferenceStore(_PREF_DB)
 
 # Auto-upgrade embedder to semantic if API keys are configured AND the provider
 # actually supports embeddings (DeepSeek currently does not). Falls back to the
@@ -177,7 +187,7 @@ async def shortcuts_chat(req: ShortcutChatRequest,
 
     use_reasoner = needs_reasoner("chat", req.message,
                                   BeliefState(user_id=user))
-    system_prompt = build_system_prompt()
+    system_prompt = build_prompt_with_prefs(user, PREF_STORE)
     if context_block:
         system_prompt += f"\n\n{context_block}"
 
@@ -516,6 +526,92 @@ async def persona_view(reload: bool = False,
     }
 
 
+# ── Feedback & Preferences (ADR-012) ──────────────────────────────────
+
+@app.get("/api/preferences")
+async def get_prefs(x_api_key: str | None = Header(default=None)) -> dict:
+    """Return the current user's preference profile."""
+    _auth(x_api_key)
+    user_id = _resolve_user(x_api_key)
+    prefs = get_user_preferences(user_id, PREF_STORE)
+    return {
+        "user_id": user_id,
+        "style": prefs.style if prefs else "",
+        "topics": prefs.topics if prefs else {},
+        "history": prefs.history[-10:] if prefs else [],
+    }
+
+
+class FeedbackRequest(BaseModel):
+    rating: int  # 1 = 👍, -1 = 👎
+    feedback_text: str = ""
+    engine_id: str = ""
+    msg_preview: str = ""  # first 60 chars of the AI reply
+
+
+@app.post("/api/feedback")
+async def post_feedback(req: FeedbackRequest,
+                         x_api_key: str | None = Header(default=None)) -> dict:
+    """Submit feedback on a reply. Adjusts quality score and parses NL feedback."""
+    _auth(x_api_key)
+    user_id = _resolve_user(x_api_key)
+
+    # 1. Adjust engine quality (immediate, lightweight)
+    if req.engine_id:
+        for e in ENGINES:
+            if e.id == req.engine_id:
+                delta = 0.01 if req.rating > 0 else -0.02
+                e.caps.quality = max(0.1, min(1.0, e.caps.quality + delta))
+                break
+
+    # 2. Parse natural-language feedback (async, optional)
+    parsed = {}
+    if req.feedback_text.strip():
+        parsed = await parse_feedback(req.feedback_text, ROUTER)
+        # Apply parsed preferences
+        if parsed.get("action") in ("prompt_inject", "both"):
+            prefs = get_user_preferences(user_id, PREF_STORE) or \
+                    PREF_STORE.get(user_id)  # forces creation
+            if parsed.get("dimension") == "style" and parsed.get("style_value"):
+                prefs.style = parsed["summary"]
+            if parsed.get("dimension") == "topic" and parsed.get("topic_preference"):
+                prefs.topics[parsed["topic"]] = parsed["topic_preference"]
+            prefs.add_feedback(req.feedback_text, req.rating,
+                              req.engine_id, parsed.get("summary", ""))
+            PREF_STORE.save(prefs)
+
+    # 3. Log to feedback_log
+    PREF_STORE.log_feedback(
+        user_id, req.msg_preview, req.engine_id,
+        req.rating, req.feedback_text, parsed)
+
+    return {
+        "rating": req.rating,
+        "engine_adjusted": req.engine_id,
+        "parsed_feedback": parsed,
+    }
+
+
+@app.post("/api/preferences/update")
+async def update_prefs(body: dict,
+                        x_api_key: str | None = Header(default=None)) -> dict:
+    """Directly set a preference value via API (for settings UI)."""
+    _auth(x_api_key)
+    user_id = _resolve_user(x_api_key)
+    prefs = PREF_STORE.get(user_id)
+
+    if "style" in body:
+        prefs.style = body["style"]
+    if "topic_prefs" in body:
+        for topic, pref in body["topic_prefs"].items():
+            prefs.topics[topic] = pref
+    if "engine_prefs" in body:
+        prefs.engine_prefs.update(body["engine_prefs"])
+
+    PREF_STORE.save(prefs)
+    return {"user_id": user_id, "style": prefs.style, "topics": prefs.topics}
+
+
 class EmpathyRequest(BaseModel):
     message: str
 
@@ -599,19 +695,21 @@ async def chat(req: ChatRequest, x_api_key: str | None = Header(default=None)) -
         req.message, ROUTER,
     )
 
+    # Resolve user early: needed for preference injection + logging
+    user_id = _resolve_user(x_api_key)
+
     # Dispatch: System 1 vs System 2
-    belief = BeliefState(user_id=_resolve_user(x_api_key))
+    belief = BeliefState(user_id=user_id)
     use_reasoner = needs_reasoner(req.role_hint or "chat", req.message, belief)
     complexity = Complexity.L3_DEEP if use_reasoner else Complexity.L2_DAILY
 
-    system_prompt = build_system_prompt()
+    system_prompt = build_prompt_with_prefs(user_id, PREF_STORE)
     if empathy_guidance:
         system_prompt += f"\n\n[当前互动]\n{empathy_guidance}"
     if context_block:
         system_prompt += f"\n\n{context_block}"
 
     react_steps = []
-    user_id = _resolve_user(x_api_key)
     log.chat_request(user_id, len(req.message),
                      "reasoner" if use_reasoner else "talker",
                      int(complexity))
@@ -789,10 +887,11 @@ async def chat_stream(req: ChatRequest,
         )
 
         # Dispatch
-        belief = BeliefState(user_id=_resolve_user(x_api_key))
+        stream_user_id = _resolve_user(x_api_key)
+        belief = BeliefState(user_id=stream_user_id)
         use_reasoner = needs_reasoner(req.role_hint or "chat", req.message, belief)
 
-        system_prompt = build_system_prompt()
+        system_prompt = build_prompt_with_prefs(stream_user_id, PREF_STORE)
         if empathy_guidance:
             system_prompt += f"\n\n[当前互动]\n{empathy_guidance}"
         if context_block:

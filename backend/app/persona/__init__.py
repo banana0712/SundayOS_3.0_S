@@ -68,6 +68,39 @@ def build_system_prompt() -> str:
     return _system_prompt_cache
 
 
+def build_prompt_with_prefs(user_id: str = "", prefs_store=None) -> str:
+    """Build system prompt with user preference injection (ADR-012).
+
+    Reads the user's preference profile and appends a natural-language
+    preference block. If no preferences exist, returns the standard prompt.
+
+    Args:
+        user_id: stable user identifier
+        prefs_store: PreferenceStore instance (optional)
+    """
+    base = build_system_prompt()
+    if not user_id or prefs_store is None:
+        return base
+    try:
+        prefs = prefs_store.get(user_id)
+        block = prefs.to_prompt_block()
+        if block:
+            return base + "\n\n" + block
+    except Exception:
+        pass
+    return base
+
+
+def get_user_preferences(user_id: str, prefs_store=None):
+    """Get the UserPreferences object for a user. Returns None if unavailable."""
+    if not user_id or prefs_store is None:
+        return None
+    try:
+        return prefs_store.get(user_id)
+    except Exception:
+        return None
+
+
 def version() -> str:
     """Return the current persona version string."""
     data = load()
