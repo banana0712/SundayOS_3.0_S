@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "postbuild": "rm -rf ../backend/console_static && cp -r out ../backend/console_static",
     "start": "next start",
     "lint": "next lint"
   },

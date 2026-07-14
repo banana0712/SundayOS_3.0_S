@@ -69,8 +69,14 @@ function KeyPrompt() {
 }
 
 function MobileShell() {
+  const { view, setView } = useUI();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const closeSidebar = () => setSidebarOpen(false);
+  const tabs = [
+    { id: "", label: "Chat", icon: "💬" },
+    { id: "dashboard", label: "Console", icon: "📊" },
+    { id: "memory", label: "Memory", icon: "🧠" },
+  ];
 
   return (
     <div className="relative z-10 flex h-[100dvh] w-screen flex-col overflow-hidden bg-bg">
@@ -79,28 +85,26 @@ function MobileShell() {
               style={{ paddingTop: "env(safe-area-inset-top, 0px)" }}>
         <button
           onClick={() => setSidebarOpen(!sidebarOpen)}
-          className="flex h-9 w-9 items-center justify-center rounded-[10px] text-secondary transition-colors hover:bg-[var(--surface-2)]"
+          className="flex h-11 w-11 items-center justify-center rounded-[10px] text-secondary transition-colors hover:bg-[var(--surface-2)]"
         >
           <PanelLeft className="h-5 w-5" />
         </button>
-        <span className="text-[14px] font-semibold text-primary">Sunday OS</span>
+        <span className="text-[15px] font-semibold text-primary">Sunday OS</span>
         <span className="ml-auto text-[11px] text-tertiary">Console</span>
       </header>
 
       {/* Off-canvas sidebar overlay */}
       {sidebarOpen && (
         <div className="fixed inset-0 z-20" onClick={closeSidebar}>
-          {/* Backdrop */}
           <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
-          {/* Sidebar panel */}
-          <div className="absolute left-0 top-0 bottom-0 w-[280px] animate-fade-up"
+          <div className="absolute left-0 top-0 bottom-0 w-[280px] max-w-[85vw] animate-fade-up"
                onClick={(e) => e.stopPropagation()}>
             <div className="flex h-12 items-center justify-between border-b border-border px-3"
                  style={{ paddingTop: "env(safe-area-inset-top, 0px)" }}>
               <span className="text-[13px] font-semibold text-primary">Menu</span>
               <button onClick={closeSidebar}
-                className="flex h-8 w-8 items-center justify-center rounded-lg text-tertiary hover:text-primary">
-                <X className="h-4 w-4" />
+                className="flex h-10 w-10 items-center justify-center rounded-lg text-tertiary hover:text-primary">
+                <X className="h-5 w-5" />
               </button>
             </div>
             <div className="h-full overflow-y-auto bg-[var(--surface)]/95 backdrop-blur-xl"
@@ -111,38 +115,49 @@ function MobileShell() {
         </div>
       )}
 
-      {/* Content */}
-      <main className="flex-1 overflow-y-auto"
-            style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}>
+      {/* Content — hide nested ChatView sidebar on mobile */}
+      <main className="flex-1 overflow-y-auto [&_div.flex.h-full>aside]:hidden"
+            style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 56px)" }}>
         <Suspense fallback={<ViewFallback />}>
           <ViewRouter />
         </Suspense>
       </main>
-      <CommandPalette />
+
+      {/* Bottom tab bar */}
+      <nav className="flex shrink-0 border-t border-border bg-[var(--surface)]/95 backdrop-blur-xl"
+           style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)", height: "calc(56px + env(safe-area-inset-bottom, 0px))" }}>
+        {tabs.map((tab) => {
+          const isActive = view === tab.id || (tab.id === "" && view === "");
+          return (
+            <button
+              key={tab.id}
+              onClick={() => setView(tab.id)}
+              className="flex flex-1 flex-col items-center justify-center gap-0.5 text-[10px] font-medium transition-colors"
+              style={{ color: isActive ? "var(--accent)" : "var(--text-tertiary)", minHeight: 48 }}
+            >
+              <span className="text-lg leading-none">{tab.icon}</span>
+              {tab.label}
+            </button>
+          );
+        })}
+      </nav>
+
     </div>
   );
 }
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   void children;
-  const isMobile = useIsMobile();
 
-  if (isMobile) {
-    return (
-      <I18nProvider>
-      <UIProvider>
-        <KeyPrompt />
-        <MobileShell />
-      </UIProvider>
-      </I18nProvider>
-    );
-  }
-
+  // Both shells render to avoid SSR hydration mismatch.
+  // CSS media queries (md:flex / md:hidden) ensure only one is visible.
+  // No JS-based detection — eliminates flash and hydration errors.
   return (
     <I18nProvider>
     <UIProvider>
       <KeyPrompt />
-      <div className="relative z-10 flex h-screen w-screen overflow-hidden">
+      {/* Desktop shell */}
+      <div className="relative z-10 hidden h-screen w-screen overflow-hidden md:flex">
         <Sidebar />
         <div className="flex min-w-0 flex-1 flex-col">
           <TopBar />
@@ -156,6 +171,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
           <ConsoleDock />
         </div>
+      </div>
+      {/* Mobile shell */}
+      <div className="md:hidden">
+        <MobileShell />
       </div>
       <CommandPalette />
     </UIProvider>

@@ -147,59 +147,110 @@ CHAT_HTML = r"""<!DOCTYPE html>
   /* ── mobile-first responsive system ──────── */
   /* Industry standards 2025-2026: dvh, clamp(), safe-area, container queries */
   @media (max-width: 768px) {
-    /* Sidebar → off-canvas overlay with backdrop */
+    /* Hide desktop-only header elements on mobile */
+    .lang-group, #consoleBtn, .conn, #keyBtn, #collapseBtn, .htxt div, .spacer {display:none!important}
+    /* Backdrop overlay (sibling element, not pseudo-element) */
+    #backdrop{display:none;position:fixed;inset:0;z-index:48;
+      background:rgba(0,0,0,.5);-webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px)}
+    #backdrop.show{display:block}
+    /* Sidebar → off-canvas overlay */
     #sidebar{
-      position:fixed;left:0;top:0;bottom:0;z-index:20;
+      position:fixed;left:0;top:0;bottom:0;z-index:50;width:280px;max-width:85vw;
       box-shadow:0 0 60px rgba(0,0,0,.6);
-      background:rgba(21,21,24,.95);backdrop-filter:blur(32px);
-      transform:translateX(0);transition:transform .3s cubic-bezier(.22,1,.36,1);
+      background:rgba(21,21,24,.96);backdrop-filter:blur(32px);
+      padding-top:calc(var(--safe-top) + 8px);
+      transform:translateX(-100%);transition:transform .28s cubic-bezier(.22,1,.36,1);
+      margin-left:0!important;
     }
-    #sidebar.collapsed{transform:translateX(-100%)}
-    /* Backdrop overlay when sidebar is open */
-    #sidebar:not(.collapsed)::after{
-      content:"";position:fixed;inset:0;left:var(--sidebar-w);z-index:-1;
-      background:rgba(0,0,0,.4);pointer-events:auto;
-    }
-    /* Show expand button */
-    #expandBtn{display:flex!important}
+    #sidebar.open{transform:translateX(0)}
+    /* Hamburger menu button */
+    #menuBtn{display:flex!important;min-width:44px;min-height:44px;font-size:20px}
     /* Full-width bubbles */
     .bubble{max-width:92%!important}
-    /* Header */
-    header{padding:8px 12px;padding-top:calc(var(--safe-top) + 8px)}
-    .htxt b{font-size:14px}
-    .hbtn{padding:4px 8px;font-size:11px}
-    .lang-group button{padding:4px 7px;font-size:11px}
-    /* Main scroll area */
-    main{padding:12px 10px;padding-bottom:calc(var(--safe-bottom) + 80px)}
-    /* Footer / composer */
-    footer{padding:8px 10px calc(var(--safe-bottom) + 12px);position:sticky;bottom:0}
-    .composer{padding:6px 6px 6px 12px;border-radius:16px}
+    /* Header — minimal bar */
+    header{
+      padding:6px 12px;padding-top:calc(var(--safe-top) + 6px);
+      min-height:48px;gap:8px;justify-content:flex-start
+    }
+    .htxt b{font-size:15px}
+    .mark{width:32px;height:32px;border-radius:9px;flex-shrink:0}
+    /* Main scroll area — room for bottom nav */
+    main{
+      padding:10px 10px;padding-bottom:calc(var(--safe-bottom) + 104px);
+      overscroll-behavior-y:contain;-webkit-overflow-scrolling:touch;
+      scroll-behavior:smooth;
+    }
+    /* Footer / composer — sticky above bottom nav */
+    footer{
+      padding:8px 10px calc(var(--safe-bottom) + 64px);
+      position:sticky;bottom:0;
+    }
+    .composer{padding:6px 6px 6px 14px;border-radius:18px}
     textarea{font-size:16px!important;line-height:1.4} /* 16px prevents iOS zoom */
-    .send{width:34px;height:34px}
+    .send{width:44px;height:44px;min-width:44px;min-height:44px}
+    .send:active{background:var(--accent);opacity:.7}
+    /* Bottom navigation bar */
+    #bottomNav{
+      display:flex;position:fixed;bottom:0;left:0;right:0;z-index:40;
+      height:calc(56px + var(--safe-bottom));
+      padding-bottom:var(--safe-bottom);
+      background:rgba(21,21,24,.92);backdrop-filter:blur(24px);
+      -webkit-backdrop-filter:blur(24px);
+      border-top:1px solid var(--border);
+    }
+    #bottomNav button{
+      flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
+      gap:2px;border:none;background:none;color:var(--ter);font-family:var(--font);
+      font-size:10px;font-weight:500;cursor:pointer;transition:color .15s;
+      min-height:48px;padding:4px 8px;
+      -webkit-tap-highlight-color:transparent;
+      -webkit-appearance:none;-webkit-user-select:none;user-select:none;
+    }
+    #bottomNav button:active{opacity:.6}
+    #bottomNav button.on{color:var(--accent)}
+    #bottomNav button .nav-icon{font-size:20px;line-height:1;margin-bottom:1px}
+    /* All buttons — touch feedback */
+    button{-webkit-user-select:none;user-select:none}
+    button:active{opacity:.7}
     /* Console / dashboard mobile */
     .dash-grid{grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px;padding:8px}
     .dash-card{padding:12px;border-radius:12px}
     .dash-card .d-val{font-size:22px}
     .dash-section{margin:4px 8px}
     .dash-table th,.dash-table td{padding:6px 8px;font-size:11px}
-    /* Conversation sidebar items */
-    .conv-item{padding:8px 10px}
-    .conv-item .c-title{font-size:12px}
-    /* Hide non-essential header items */
-    .conn{font-size:10px}
-    .status-bar{font-size:9px;gap:8px}
+    .dash-table{overflow-x:auto;display:block;-webkit-overflow-scrolling:touch}
+    /* Conversation sidebar items — larger touch targets */
+    .conv-item{padding:10px 12px;min-height:44px}
+    .conv-item .c-title{font-size:13px}
+    .c-del{width:32px;height:32px;min-width:32px;min-height:32px}
+    .sb-header .new-btn{min-height:44px;font-size:14px}
+    /* Status bar */
+    .status-bar{font-size:10px;gap:8px}
+    /* Reduce motion if user prefers */
+    @media (prefers-reduced-motion:reduce){
+      #sidebar,#backdrop{transition:none!important}
+    }
   }
 
   /* ── tiny screens (< 400px) ───────────────── */
   @media (max-width: 400px) {
-    .mark{width:28px;height:28px;border-radius:9px}
-    .htxt b{font-size:13px}
-    .hbtn{padding:3px 6px;font-size:10px}
-    .lang-group{display:none} /* hide on very small screens, keep in header dropdown */
+    .mark{width:28px;height:28px;border-radius:8px}
+    .htxt b{font-size:14px}
     .dash-grid{grid-template-columns:1fr}
     .bubble{max-width:96%!important;padding:8px 12px;font-size:14px}
     textarea{font-size:16px!important}
-    .send{width:32px;height:32px}
+    .send{width:40px;height:40px;min-width:40px;min-height:40px}
+    #bottomNav button{font-size:9px}
+    #bottomNav button .nav-icon{font-size:18px}
+    #sidebar{width:280px;max-width:90vw}
+    .dash-table{font-size:10px}
+    .dash-table th,.dash-table td{padding:4px 6px;font-size:10px}
+    header{padding:4px 8px;padding-top:calc(var(--safe-top) + 4px);min-height:44px}
+    .dash-card{padding:10px;border-radius:10px}
+    .dash-card .d-val{font-size:18px}
+    footer{padding:6px 8px calc(var(--safe-bottom) + 60px)}
+    .composer{padding:4px 4px 4px 10px}
+    main{padding:8px 6px;padding-bottom:calc(var(--safe-bottom) + 100px)}
   }
 </style>
 </head>
@@ -213,10 +264,13 @@ CHAT_HTML = r"""<!DOCTYPE html>
   <div id="conv-list"></div>
 </div>
 
+<!-- Backdrop for mobile sidebar overlay -->
+<div id="backdrop" onclick="closeSidebar()"></div>
+
 <!-- ── Main chat ─────────────────────────────── -->
 <div id="main-col">
 <header>
-  <button class="collapse-btn" id="expandBtn" title="展开侧栏" style="display:none">☰</button>
+  <button class="collapse-btn" id="menuBtn" title="菜单" style="display:none" onclick="toggleSidebar()">☰</button>
   <div class="mark"><span>☀️</span></div>
   <div class="htxt"><b>Sunday</b><div id="subtitle">一个心智，服务你的一切</div></div>
   <div class="spacer"></div>
@@ -237,11 +291,18 @@ CHAT_HTML = r"""<!DOCTYPE html>
 <footer id="chatFooter">
   <div class="status-bar" id="statusBar"></div>
   <div class="composer">
-    <textarea id="input" rows="1" placeholder="对 Sunday 说点什么…"></textarea>
+    <textarea id="input" rows="1" placeholder="对 Sunday 说点什么…" enterkeyhint="send"></textarea>
     <button class="send" id="send">↑</button>
   </div>
 </footer>
 </div>
+
+<!-- ── Bottom nav (mobile) ──────────────────── -->
+<nav id="bottomNav">
+  <button class="on" data-view="0" onclick="switchView(0)"><span class="nav-icon">💬</span>Chat</button>
+  <button data-view="1" onclick="switchView(1)"><span class="nav-icon">📊</span>Console</button>
+  <button data-view="2" onclick="switchView(2)"><span class="nav-icon">🧠</span>Memory</button>
+</nav>
 
 <script>
 // ── i18n ───────────────────────────────────────
@@ -309,13 +370,54 @@ function ensureKey(force){
   return apiKey;}
 
 // ── sidebar ────────────────────────────────────
+const isMobile = () => window.matchMedia("(max-width: 768px)").matches;
+
 function toggleSidebar(){
   sidebarOpen=!sidebarOpen;
-  $("sidebar").className=sidebarOpen?"":"collapsed";
-  $("expandBtn").style.display=sidebarOpen?"none":"";
+  applySidebarState();
 }
-$("collapseBtn").onclick=toggleSidebar;
-$("expandBtn").onclick=toggleSidebar;
+
+function closeSidebar(){
+  sidebarOpen=false;
+  applySidebarState();
+}
+
+function applySidebarState(){
+  const s=$("sidebar");
+  if(isMobile()){
+    if(sidebarOpen){s.classList.add("open");$("backdrop").classList.add("show");document.body.style.overflow="hidden"}
+    else{s.classList.remove("open");$("backdrop").classList.remove("show");document.body.style.overflow=""}
+  }else{
+    s.className=sidebarOpen?"":"collapsed";
+  }
+}
+$("collapseBtn").onclick=()=>{toggleSidebar();};
+
+// ── swipe-to-close sidebar ────────────────────
+let touchStartX=0,touchStartY=0;
+document.addEventListener("touchstart",e=>{touchStartX=e.touches[0].clientX;touchStartY=e.touches[0].clientY},{passive:true});
+document.addEventListener("touchend",e=>{
+  const dx=e.changedTouches[0].clientX-touchStartX;
+  const dy=e.changedTouches[0].clientY-touchStartY;
+  // swipe left > 60px to close
+  if(dx<-60&&Math.abs(dy)<Math.abs(dx)&&sidebarOpen){closeSidebar()}
+  // swipe right from left edge to open
+  if(dx>60&&Math.abs(dy)<Math.abs(dx)&&touchStartX<30&&!sidebarOpen){sidebarOpen=true;applySidebarState()}
+});
+
+// ── keyboard handling (iOS visualViewport) ─────
+if(window.visualViewport){
+  window.visualViewport.addEventListener("resize",()=>{
+    const offset=window.innerHeight-window.visualViewport.height;
+    if(offset>100){
+      // keyboard open — push footer up
+      $("chatFooter").style.transform=`translateY(-${offset-56}px)`;
+      main.scrollTop=main.scrollHeight;
+    }else{
+      $("chatFooter").style.transform="";
+    }
+  });
+}
 
 async function refreshConvList(){
   if(!apiKey){$("conv-list").innerHTML=`<div class="sb-empty">${t("noConv")}</div>`;return}
@@ -402,7 +504,7 @@ function addMsg(role,text,meta,isErr){
 let sending=false;
 async function send(){
   const text=input.value.trim();if(!text||sending)return;
-  if(!ensureKey())return;
+  if(!apiKey){ensureKey(true);if(!apiKey)return;}
   addMsg("me",text);input.value="";input.style.height="auto";
   sending=true;sendBtn.classList.remove("on");
   const typing=addMsg("ai","");
@@ -417,6 +519,14 @@ async function send(){
       body:JSON.stringify(body)});
 
     if(r.status===401){typing.remove();addMsg("ai",t("err401"),"",true);sending=false;return}
+    if(r.status===403){typing.remove();addMsg("ai","API Key 权限不足 (403 Forbidden)。请确认 Key 有正确的权限。","",true);sending=false;return}
+    if(r.status===502||r.status===503){typing.remove();addMsg("ai",t("errNet")+" (后端服务未就绪)","",true);sending=false;return}
+
+    if(!r.ok){
+      // Try to read error body
+      let errText=""; try{const ed=await r.json();errText=ed.detail||JSON.stringify(ed)}catch(ex){errText=await r.text().catch(()=>"")}
+      typing.remove();addMsg("ai",`请求失败 (${r.status}): ${errText.substring(0,200)}`,"",true);sending=false;return
+    }
 
     if(r.ok && r.headers.get("content-type")?.includes("text/event-stream")){
       // SSE streaming path
@@ -516,25 +626,28 @@ function updateStatusBar(d){
 }
 
 // ── console / dashboard / memory toggle ─────────
-// 0 = chat, 1 = dashboard, 2 = memory
+// 0 = chat, 1 = dashboard, 2 = memory, 3 = debug
 let viewMode = 0;
 let healthCache = null;
-const VIEW_LABELS = ["📊", "🧠", "🔧", "💬"];  // labels shown on button
-const SUBTITLES = [t("subtitle"), "Console", "Memory"];
+
+function switchView(mode){
+  viewMode = mode;
+  $("wrap").style.display = mode === 0 ? "" : "none";
+  $("chatFooter").style.display = mode === 0 ? "" : "none";
+  $("consoleView").style.display = mode === 1 ? "" : "none";
+  $("memoryView").style.display = mode === 2 ? "" : "none";
+  $("debugView").style.display = mode === 3 ? "" : "none";
+  // Update bottom nav active state
+  document.querySelectorAll("#bottomNav button").forEach((b,i)=>{
+    b.className = i === mode ? "on" : "";
+  });
+  if(mode === 1) refreshConsole();
+  if(mode === 2) refreshMemory();
+  if(mode === 3) refreshDebug();
+}
 
 function toggleConsole(){
-  viewMode = (viewMode + 1) % 4;
-  $("consoleBtn").textContent = VIEW_LABELS[viewMode];
-  $("consoleBtn").className = "hbtn" + (viewMode > 0 ? " on" : "");
-  $("wrap").style.display = viewMode === 0 ? "" : "none";
-  $("chatFooter").style.display = viewMode === 0 ? "" : "none";
-  $("consoleView").style.display = viewMode === 1 ? "" : "none";
-  $("memoryView").style.display = viewMode === 2 ? "" : "none";
-  $("debugView").style.display = viewMode === 3 ? "" : "none";
-  $("subtitle").textContent = viewMode === 0 ? t("subtitle") : (["Console","Memory","Debug"][viewMode-1]||"");
-  if(viewMode === 1) refreshConsole();
-  if(viewMode === 2) refreshMemory();
-  if(viewMode === 3) refreshDebug();
+  switchView((viewMode + 1) % 4);
 }
 
 async function refreshConsole(){
@@ -793,6 +906,9 @@ input.addEventListener("input",()=>{input.style.height="auto";input.style.height
 input.addEventListener("keydown",e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();send()}});
 sendBtn.addEventListener("click",send);
 $("keyBtn").addEventListener("click",()=>{ensureKey(true);refreshConvList()});
+
+// Mobile: start with sidebar closed
+if(isMobile()){sidebarOpen=false;applySidebarState();}
 
 applyLang();renderEmpty();ping();setInterval(ping,8000);
 if(!apiKey)setTimeout(()=>ensureKey(true),400);
