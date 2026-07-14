@@ -542,21 +542,28 @@ function addMsg(role,text,meta,isErr,engineId){
     const errDiv=document.createElement("div");
     errDiv.className="err-detail";errDiv.textContent="⚠ "+t("errEngine");
     row.querySelector(".meta")?.after(errDiv)}
-  // Feedback buttons for AI replies (not errors, not typing indicator)
-  if(role==="ai"&&!isErr&&text&&!text.includes('[mock')){
-    const fbRow=document.createElement("div");
-    fbRow.className="feedback-row";
-    const msgPreview=text.substring(0,60);
-    fbRow.innerHTML=
-      `<button class="fb-btn" onclick="event.stopPropagation();rateReply(1,'${escAttr(msgPreview)}','${engineId||''}',this)" title="有帮助">👍</button>`+
-      `<button class="fb-btn fb-dislike" onclick="event.stopPropagation();rateReply(-1,'${escAttr(msgPreview)}','${engineId||''}',this)" title="不太对">👎</button>`;
-    row.querySelector(".bubble")?.parentElement?.appendChild(fbRow);
+  // Auto-feedback: only for the single-bubble AI case, but NOT if
+  // feedback will be added externally by burst rendering code.
+  // Avoid double 👍👎 rows.
+  const _hasFb=row.querySelector('.feedback-row');
+  if(!_hasFb&&role==="ai"&&!isErr&&text&&!text.includes('[mock')&&!text.includes('[mock')){
+    row.querySelector(".bubble")?.parentElement?.appendChild(makeFbRow(text,engineId||''));
   }
   wrap.appendChild(row);
   main.scrollTop=main.scrollHeight;
   return row}
 
 function escAttr(s){return s.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/'/g,'&#39;').replace(/</g,'&lt;')}
+
+// Helper: create feedback button row (reusable for multi-bubble)
+function makeFbRow(text,engineId){
+  const fbRow=document.createElement("div");
+  fbRow.className="feedback-row";
+  fbRow.innerHTML=
+    `<button class="fb-btn" onclick="event.stopPropagation();rateReply(1,'${escAttr(text.substring(0,60))}','${escAttr(engineId||'')}',this)" title="有帮助">👍</button>`+
+    `<button class="fb-btn fb-dislike" onclick="event.stopPropagation();rateReply(-1,'${escAttr(text.substring(0,60))}','${escAttr(engineId||'')}',this)" title="不太对">👎</button>`;
+  return fbRow;
+}
 
 // ── chat ───────────────────────────────────────
 let sending=false;
@@ -587,12 +594,13 @@ async function send(){
     }
 
     if(r.ok && r.headers.get("content-type")?.includes("text/event-stream")){
-      // SSE streaming path
+      // SSE streaming path — live streaming into one bubble,
+      // then on "done" we burst the accumulated text into natural segments.
       typing.remove();
       const bubbleRow=addMsg("ai","");
       const bubble=bubbleRow.querySelector(".bubble");
       bubble.innerHTML="";
-      let metaBuilt=false,streamedText="",streamEngine="",streamSystem="";
+      let streamedText="",streamEngine="",streamSystem="";
       const reader=r.body.getReader();
       const decoder=new TextDecoder();
       let buf="";
@@ -609,6 +617,54 @@ async function send(){
             if(d.type==="done"){
               if(d.conversation_id&&!convId)convId=d.conversation_id;
               streamEngine=d.engine||"";streamSystem=d.system||"";
+              if(d.bursts&&d.bursts.length>1){
+                // Replace monolithic bubble with burst segments
+                const bursts=d.bursts;
+                const firstText=bursts[0];
+                bubble.textContent=firstText.trim();
+                // Build meta on first bubble
+                const sysTag=streamSystem?`<span class="tag">${streamSystem==="reasoner"?t("deep"):t("fast")}</span>`:"";
+                const eng=streamEngine?streamEngine+" ":"";
+                const metaDiv=document.createElement("div");
+                metaDiv.className="meta";
+                metaDiv.innerHTML=eng+sysTag;
+                if(firstText.trim()&&!firstText.includes('[mock')){
+                  const fbRow=makeFbRow(firstText,streamEngine||'');
+                  bubbleRow.querySelector(".bubble")?.parentElement?.appendChild(fbRow);
+                }
+                bubbleRow.appendChild(metaDiv);
+                // Subsequent bursts
+                let delay=600;
+                for(let i=1;i<bursts.length;i++){
+                  setTimeout(()=>{
+                    const showTyping=addMsg("ai","");
+                    showTyping.querySelector(".bubble").innerHTML='<span class="typing"><span></span><span></span><span></span></span>';
+                    setTimeout(()=>{
+                      showTyping.remove();
+                      const segRow=addMsg("ai",bursts[i].trim(),"",false,streamEngine||'');
+                      // Add feedback only to last segment
+                      if(i===bursts.length-1&&bursts[i].trim()&&!bursts[i].includes('[mock')){
+                        const fbRow2=makeFbRow(bursts[i],streamEngine||'');
+                        segRow.querySelector(".bubble")?.parentElement?.appendChild(fbRow2);
+                      }
+                    },400+Math.random()*500);
+                  },delay);
+                  delay+=600+Math.random()*400;
+                }
+              }else{
+                // Single bubble (no burst) — add meta + feedback
+                bubble.textContent=streamedText||bubble.textContent||(d.reply||"");
+                const sysTag=streamSystem?`<span class="tag">${streamSystem==="reasoner"?t("deep"):t("fast")}</span>`:"";
+                const eng=streamEngine?streamEngine+" ":"";
+                const metaDiv=document.createElement("div");
+                metaDiv.className="meta";
+                metaDiv.innerHTML=eng+sysTag;
+                bubbleRow.appendChild(metaDiv);
+                if(streamedText&&!streamedText.includes('[mock')){
+                  const fbRow=makeFbRow(streamedText,streamEngine||'');
+                  bubbleRow.querySelector(".bubble")?.parentElement?.appendChild(fbRow);
+                }
+              }
             }else if(d.type==="text"){
               streamedText+=d.content;
               bubble.textContent=streamedText;
@@ -627,39 +683,55 @@ async function send(){
           }catch(e){/* skip bad JSON */}
         }
       }
-      bubble.textContent=streamedText||bubble.textContent;
-      // Build meta
-      const sysTag=streamSystem?`<span class="tag">${streamSystem==="reasoner"?t("deep"):t("fast")}</span>`:"";
-      const eng=streamEngine?streamEngine+" ":"";
-      const metaDiv=document.createElement("div");
-      metaDiv.className="meta";
-      metaDiv.innerHTML=eng+sysTag;
-      bubbleRow.appendChild(metaDiv);
-      // Feedback buttons for SSE replies
-      if(streamedText&&!streamedText.includes('[mock')){
-        const fbRow=document.createElement("div");
-        fbRow.className="feedback-row";
-        fbRow.innerHTML=
-          `<button class="fb-btn" onclick="event.stopPropagation();rateReply(1,'${escAttr(streamedText.substring(0,60))}','${escAttr(streamEngine||'')}',this)" title="有帮助">👍</button>`+
-          `<button class="fb-btn fb-dislike" onclick="event.stopPropagation();rateReply(-1,'${escAttr(streamedText.substring(0,60))}','${escAttr(streamEngine||'')}',this)" title="不太对">👎</button>`;
-        bubbleRow.querySelector(".bubble")?.parentElement?.appendChild(fbRow);
-      }
     }else{
       // Fallback: non-streaming
       const d=await r.json();
       typing.remove();
       if(d.conversation_id&&!convId)convId=d.conversation_id;
-      const sysTag=d.system?`<span class="tag">${d.system==="reasoner"?t("deep"):t("fast")}</span>`:"";
-      const eng=d.engine?d.engine+" ":"";
       const hasErr=d.trace&&d.trace.errors&&Object.keys(d.trace.errors).length>0;
-      const errTag=hasErr?`<span class="tag err">⚠ ${t("errEngine")}</span>`:"";
-      addMsg("ai",d.reply||t("errNet"),eng+sysTag+errTag,hasErr,d.engine);
-      if(hasErr&&d.trace&&d.trace.errors){
-        const row=wrap.lastElementChild;
-        const errs=Object.entries(d.trace.errors).map(([eid,msg])=>`${eid}: ${msg}`).join(" · ");
-        const errDiv=document.createElement("div");
-        errDiv.className="err-detail";errDiv.textContent=errs;
-        row.appendChild(errDiv)}
+      const engineId=d.engine||"";
+
+      // Multi-bubble burst rendering
+      const bursts=d.bursts||[];
+      if(bursts.length>1&&!hasErr){
+        let delay=300;
+        for(let i=0;i<bursts.length;i++){
+          setTimeout(()=>{
+            if(i===0){
+              // Show typing indicator briefly before first bubble
+              const tyRow=addMsg("ai","");
+              tyRow.querySelector(".bubble").innerHTML='<span class="typing"><span></span><span></span><span></span></span>';
+              setTimeout(()=>{
+                tyRow.remove();
+                const row=addMsg("ai",bursts[i].trim(),"",false,engineId);
+                if(bursts[i].trim()&&!bursts[i].includes('[mock')){
+                  const fbRow=makeFbRow(bursts[i],engineId);
+                  row.querySelector(".bubble")?.parentElement?.appendChild(fbRow);
+                }
+              },350);
+            }else{
+              const row=addMsg("ai",bursts[i].trim(),"",false,engineId);
+              if(i===bursts.length-1&&bursts[i].trim()&&!bursts[i].includes('[mock')){
+                const fbRow=makeFbRow(bursts[i],engineId);
+                row.querySelector(".bubble")?.parentElement?.appendChild(fbRow);
+              }
+            }
+          },delay);
+          delay+=450+Math.random()*400;
+        }
+      }else{
+        // Single bubble (no burst or error)
+        const sysTag=d.system?`<span class="tag">${d.system==="reasoner"?t("deep"):t("fast")}</span>`:"";
+        const eng=d.engine?d.engine+" ":"";
+        const errTag=hasErr?`<span class="tag err">⚠ ${t("errEngine")}</span>`:"";
+        addMsg("ai",d.reply||t("errNet"),eng+sysTag+errTag,hasErr,d.engine);
+        if(hasErr&&d.trace&&d.trace.errors){
+          const row=wrap.lastElementChild;
+          const errs=Object.entries(d.trace.errors).map(([eid,msg])=>`${eid}: ${msg}`).join(" · ");
+          const errDiv=document.createElement("div");
+          errDiv.className="err-detail";errDiv.textContent=errs;
+          row.appendChild(errDiv)}
+      }
     }
     // refresh sidebar
     if(convId)await refreshConvList();

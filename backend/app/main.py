@@ -21,6 +21,7 @@ from .persona.preferences import PreferenceStore
 from .persona.feedback_parser import parse_feedback
 
 from .cognition.belief import BeliefState
+from .cognition.burst_split import burst_split
 from .cognition.dispatch import needs_reasoner, risk_level
 from .engines.base import Complexity, EngineMessage
 from .engines.registry import build_engines
@@ -846,6 +847,7 @@ async def chat(req: ChatRequest, x_api_key: str | None = Header(default=None)) -
 
     return {
         "reply": reply,
+        "bursts": burst_split(reply),
         "conversation_id": conv_id,
         "engine": chosen_engine,
         "system": "reasoner" if use_reasoner else "talker",
@@ -935,8 +937,16 @@ async def chat_stream(req: ChatRequest,
                 chunk = " ".join(words[i:i+3])
                 yield f"data: {_json.dumps({'type': 'text', 'content': chunk + ' '})}\n\n"
 
-        # Done event
-        yield f"data: {_json.dumps({'type': 'done', 'conversation_id': conv_id, 'engine': engine, 'system': system_label})}\n\n"
+        # Done event — include bursts for multi-bubble rendering
+        done_payload = {
+            "type": "done",
+            "conversation_id": conv_id,
+            "engine": engine,
+            "system": system_label,
+            "reply": reply,
+            "bursts": burst_split(reply),
+        }
+        yield f"data: {_json.dumps(done_payload)}\n\n"
 
         # Persist conversation
         CONV.add_message(conv_id, "user", req.message)
