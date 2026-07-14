@@ -45,6 +45,31 @@ def build_engines() -> list:
             price_in=0.55, price_out=2.19,
         ))
 
+    # ── Custom / self-hosted OpenAI-compatible gateway ──────────────────
+    # Set CUSTOM_API_KEY + CUSTOM_BASE_URL to point at any
+    # OpenAI-compatible endpoint (88api, one-api, LiteLLM, vLLM, etc.).
+    # CUSTOM_MODEL controls the default model; CUSTOM_MODEL_REASONER
+    # (optional) adds a second "strong reasoning" slot.
+    custom_key = env("CUSTOM_API_KEY")
+    if custom_key:
+        base = env("CUSTOM_BASE_URL", "https://api.openai.com/v1")
+        model = env("CUSTOM_MODEL", "gpt-4o")
+        engines.append(OpenAICompatibleProvider(
+            id="sunday-chat", api_key=custom_key, base_url=base, model=model,
+            caps=EngineCapabilities(function_calling=True, max_context=128_000,
+                                    languages=("zh", "en")),
+            price_in=0, price_out=0,
+        ))
+        reasoner_model = env("CUSTOM_MODEL_REASONER")
+        if reasoner_model:
+            engines.append(OpenAICompatibleProvider(
+                id="sunday-reasoner", api_key=custom_key, base_url=base,
+                model=reasoner_model,
+                caps=EngineCapabilities(strong_reasoning=True, max_context=128_000,
+                                        languages=("zh", "en")),
+                price_in=0, price_out=0,
+            ))
+
     qwen_key = env("QWEN_API_KEY")
     if qwen_key:
         engines.append(OpenAICompatibleProvider(
