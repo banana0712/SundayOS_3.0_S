@@ -40,7 +40,14 @@ from .persona.empathy import run_empathy_pipeline, analyze_user as empathy_analy
 
 load_dotenv(override=True)
 
-app = FastAPI(title="SundayOS 3.0", version="3.0.0-alpha")
+# Read version from the project VERSION file (single source of truth).
+# Falls back to "0.0.0-dev" if the file is missing.
+_version_path = Path(__file__).resolve().parent.parent.parent / "VERSION"
+try:
+    _version_str = _version_path.read_text(encoding="utf-8").strip()
+except Exception:
+    _version_str = "0.0.0-dev"
+app = FastAPI(title="Sunday OS", version=_version_str)
 
 # CORS — the API is auth-protected via X-API-Key, so we allow any origin to
 # call it (iPhone Shortcuts, the web console on another domain, curl, etc.).
@@ -262,11 +269,26 @@ async def home() -> str:
     return CHAT_HTML
 
 
+@app.get("/api/version")
+async def version_info() -> dict:
+    """Return the current Sunday OS version + changelog pointer."""
+    parts = _version_str.replace("-dev", "").replace("-alpha", "").replace("-beta", "").split(".")
+    return {
+        "version": _version_str,
+        "phase": "Phase 1 · ~90%",
+        "changelog": "CHANGELOG.md",
+        "major": int(parts[0]) if len(parts) > 0 and parts[0].isdigit() else 0,
+        "minor": int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 0,
+        "patch": int(parts[2]) if len(parts) > 2 and parts[2].isdigit() else 0,
+    }
+
+
 @app.get("/health")
 async def health() -> dict:
     from .memory.embedding import embedding_dim as edim
     return {
         "status": "ok",
+        "version": _version_str,
         "engines": [e.id for e in ENGINES],
         "memory_nodes": len(MEMORY.all()),
         "conversation_count": CONV.count(),

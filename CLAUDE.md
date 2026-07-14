@@ -20,12 +20,19 @@
 今天的开发已完成。
 
 请更新：
+- VERSION（根据变更类型 bump MAJOR / MINOR / PATCH）
+- CHANGELOG.md（按 Keep a Changelog 格式记录本次变更）
 - CURRENT_STATE.md
 - ROADMAP.md
 - PROJECT_MEMORY.md
 - 如果架构有变化，同步更新 ARCHITECTURE.md
 - 如果有新增模块/文档，同步更新 AI_CONTEXT.md
 - 如果有新增调试入口，同步更新 DEBUGGING.md
+
+版本号规则（SemVer）：
+- MAJOR（x.0.0）：架构变更、不兼容的 API 修改、核心理念调整
+- MINOR（0.x.0）：新功能、新模块（向后兼容）
+- PATCH（0.0.x）：Bug 修复、性能优化、文档更新
 
 然后总结今天的进展，为下一次开发会话做好准备。
 ```

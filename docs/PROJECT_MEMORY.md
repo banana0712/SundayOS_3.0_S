@@ -199,7 +199,40 @@
 
 ---
 
-## 6. 项目命名与术语传统
+## 6. 版本管理机制
+
+### 版本号规则（SemVer + Keep a Changelog）
+
+遵循 [语义化版本 (SemVer)](https://semver.org/lang/zh-CN/) 和 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 行业标准。
+
+| 版本段 | 触发条件 | 示例 |
+|--------|---------|------|
+| **MAJOR** (x.0.0) | 架构变更、不兼容的 API 修改、核心理念调整 | Runtime 骨骼建立、六层架构重构 |
+| **MINOR** (0.x.0) | 新功能、新模块（向后兼容） | 共情计算新增、技能系统上线 |
+| **PATCH** (0.0.x) | Bug 修复、性能优化、文档更新 | useDrift 移除、SSE 节流优化 |
+
+### 版本文件
+
+| 文件 | 用途 |
+|------|------|
+| `VERSION` | 单一真相源（纯文本，一行） |
+| `CHANGELOG.md` | 按 Keep a Changelog 格式记录每次变更 |
+| `GET /api/version` | 运行时查看当前版本 |
+
+### 发版流程
+
+1. 本次会话的所有功能完成后
+2. 根据变更类型决定 bump MAJOR / MINOR / PATCH
+3. 更新 `VERSION` 文件
+4. 将本次变更写入 `CHANGELOG.md` 的 `## [X.Y.Z] — YYYY-MM-DD` 段落下
+5. `git commit -m "release: vX.Y.Z"`
+6. `git push origin main`
+
+当前版本：`0.7.0`
+
+---
+
+## 7. 项目命名与术语传统
 
 - **"Sunday"** 的由来：Sun（日）+ Day（天）="星期天"——放松、自由、全天陪伴的感觉。非宗教含义。
 - **代码中的 "Banana"**：用户昵称，出现在 Sidebar 用户信息、Git 提交作者、测试数据中。

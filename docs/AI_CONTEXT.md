@@ -48,6 +48,8 @@ SundayOS/
 │   │   ├── OLLAMA_SETUP.md     #     Ollama 本地 Embedding 配置
 │   │   └── DEPLOY_SERVER.md    #     云服务器部署指南（小兔云/阿里云等）
 │   └── 3.0/                   #   实现级技术规范（13 文档 + 10 ADR）
+├── VERSION                     # ★ 版本号（SemVer 单一真相源）
+├── CHANGELOG.md                # ★ 变更日志（Keep a Changelog 格式）
 ├── persona.yaml                # ★ Sunday 人格真源（Git 版本化，改人格=commit）
 ├── backend/                   # FastAPI 参考实现（Python 3.11+）
 │   └── app/
