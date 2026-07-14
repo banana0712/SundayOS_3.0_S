@@ -570,6 +570,8 @@ async def engines() -> dict:
                 "strong_reasoning": e.caps.strong_reasoning,
                 "function_calling": e.caps.function_calling,
                 "local": e.caps.local,
+                "quality": e.caps.quality,
+                "primary": e.caps.primary,
                 "price_in": e.price_in,
                 "price_out": e.price_out,
             }
