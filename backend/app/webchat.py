@@ -361,7 +361,36 @@ $("langZh").className=lang==="zh"?"on":"";
 $("langEn").className=lang==="en"?"on":"";
 
 function renderEmpty(){
-  wrap.innerHTML=`<div class="empty"><div class="big">☀️</div><h2>${t("empty_h")}</h2><p>${t("empty_p")}</p></div>`;
+  const keyHint = apiKey ? "" : `
+    <div style="margin-top:20px;display:flex;flex-direction:column;align-items:center;gap:8px">
+      <input id="keyInputWelcome" type="password" placeholder="请输入 API Key"
+        style="width:240px;padding:8px 12px;border-radius:8px;border:1px solid var(--border2);
+        background:var(--surface);color:var(--text);font-size:13px;font-family:var(--font);text-align:center;
+        outline:none"
+        onfocus="this.style.borderColor='var(--accent)'"
+        onblur="this.style.borderColor='var(--border2)'">
+      <button onclick="saveWelcomeKey()"
+        style="padding:8px 24px;border-radius:8px;border:none;background:var(--accent);color:#fff;
+        font-size:13px;font-family:var(--font);cursor:pointer;min-height:40px">
+        确认并开始聊天
+      </button>
+      <p id="welcomeKeyErr" style="font-size:11px;color:var(--danger);display:none"></p>
+    </div>`;
+  wrap.innerHTML=`<div class="empty"><div class="big">☀️</div><h2>${t("empty_h")}</h2><p>${t("empty_p")}</p>${keyHint}</div>`;
+}
+
+function saveWelcomeKey(){
+  const inp = document.getElementById("keyInputWelcome");
+  const err = document.getElementById("welcomeKeyErr");
+  if(!inp) return;
+  const v = inp.value.trim();
+  if(!v){ err.textContent = "Key 不能为空"; err.style.display=""; return }
+  apiKey = v;
+  localStorage.setItem("sunday.key", apiKey);
+  err.style.display = "none";
+  renderEmpty(); // refresh to show connected state
+  refreshConvList();
+  ping(); // re-check connection
 }
 
 // ── key ────────────────────────────────────────
@@ -630,6 +659,43 @@ function updateStatusBar(d){
 let viewMode = 0;
 let healthCache = null;
 
+// Renders a key-entry prompt (inline HTML, not browser prompt())
+function renderKeyPromptView(viewName){
+  return `
+    <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;min-height:260px;text-align:center;padding:24px">
+      <div style="font-size:40px;margin-bottom:12px">🔑</div>
+      <h2 style="font-size:18px;color:var(--text);margin-bottom:8px">需要 API Key</h2>
+      <p style="font-size:13px;color:var(--sec);margin-bottom:20px;max-width:280px">${viewName} 需要验证身份才能加载数据。请输入你的 API Key。</p>
+      <input id="keyInputInline" type="password" placeholder="SUNDAY_API_KEY"
+        style="width:100%;max-width:280px;padding:10px 14px;border-radius:10px;border:1px solid var(--border2);
+        background:var(--surface);color:var(--text);font-size:14px;font-family:var(--font);text-align:center;
+        outline:none;transition:border-color .2s"
+        onfocus="this.style.borderColor='var(--accent)'"
+        onblur="this.style.borderColor='var(--border2)'">
+      <button onclick="saveInlineKey()"
+        style="margin-top:12px;padding:10px 32px;border-radius:10px;border:none;background:var(--accent);color:#fff;
+        font-size:14px;font-family:var(--font);cursor:pointer;min-height:44px">
+        确认并加载
+      </button>
+      <p id="keyInlineErr" style="font-size:11px;color:var(--danger);margin-top:8px;display:none"></p>
+    </div>`;
+}
+
+function saveInlineKey(){
+  const inp = document.getElementById("keyInputInline");
+  const err = document.getElementById("keyInlineErr");
+  if(!inp) return;
+  const v = inp.value.trim();
+  if(!v){ err.textContent = "Key 不能为空"; err.style.display=""; return }
+  apiKey = v;
+  localStorage.setItem("sunday.key", apiKey);
+  err.style.display = "none";
+  // Reload the current view
+  if(viewMode === 1) refreshConsole();
+  if(viewMode === 2) refreshMemory();
+  if(viewMode === 3) refreshDebug();
+}
+
 function switchView(mode){
   viewMode = mode;
   $("wrap").style.display = mode === 0 ? "" : "none";
@@ -651,6 +717,7 @@ function toggleConsole(){
 }
 
 async function refreshConsole(){
+  if(!apiKey){ $("consoleView").innerHTML = renderKeyPromptView("Console 仪表盘"); return }
   try{
     const r = await fetch("/health");
     healthCache = await r.json();
@@ -740,6 +807,7 @@ async function refreshConsole(){
 
 // ── memory view ────────────────────────────────
 async function refreshMemory(){
+  if(!apiKey){ $("memoryView").innerHTML = renderKeyPromptView("Memory 记忆视图"); return }
   // fetch stats
   let stats = {};
   try{
@@ -855,6 +923,7 @@ async function doConsolidate(){
 
 // ── debug view ─────────────────────────────────
 async function refreshDebug(){
+  if(!apiKey){ $("debugView").innerHTML = renderKeyPromptView("Debug 诊断视图"); return }
   let ov={};
   try{
     const r=await fetch("/api/debug/overview",{headers:{"X-API-Key":apiKey}});
