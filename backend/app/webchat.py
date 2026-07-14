@@ -14,6 +14,7 @@ CHAT_HTML = r"""<!DOCTYPE html>
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <meta name="theme-color" content="#0B0B0C" />
+<link rel="manifest" href="/manifest.json" />
 <title>Sunday</title>
 <style>
   :root{

@@ -31,9 +31,12 @@ MANIFEST_JSON = r"""{
   ]
 }"""
 
-# SVG icon — simple Sunday mark, vector so scales to any size
-_SVG_ICON = (
-    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">'
+# SVG icon template — simple Sunday mark, parameterized by size.
+# Uses {{size}} placeholders so the icon renders at the exact pixel
+# dimensions the PWA manifest declares.
+_SVG_ICON_TEMPLATE = (
+    '<svg xmlns="http://www.w3.org/2000/svg" '
+    'width="{size}" height="{size}" viewBox="0 0 512 512">'
     '<defs>'
     '<linearGradient id="g" x1="0" y1="0" x2="1" y2="1">'
     '<stop offset="0%" stop-color="#0a84ff"/>'
@@ -49,5 +52,5 @@ _SVG_ICON = (
 
 
 def get_icon_svg(size: int = 512) -> str:
-    """Return SVG icon wrapper at requested size."""
-    return _SVG_ICON
+    """Return SVG icon at the requested pixel size."""
+    return _SVG_ICON_TEMPLATE.replace("{size}", str(size))

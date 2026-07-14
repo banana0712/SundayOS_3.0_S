@@ -8,7 +8,7 @@ from __future__ import annotations
 import os
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, Header, HTTPException
+from fastapi import FastAPI, Header, HTTPException, Path as FastAPIPath
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, StreamingResponse, FileResponse, Response
 from fastapi.staticfiles import StaticFiles
@@ -234,7 +234,7 @@ async def manifest() -> dict:
 
 
 @app.get("/api/pwa/icon-{size}", response_class=Response)
-async def pwa_icon(size: int) -> Response:
+async def pwa_icon(size: int = FastAPIPath(..., ge=1)) -> Response:
     """SVG icon at requested size — vector, scales to anything."""
     from fastapi.responses import Response as FastAPIResponse
     return FastAPIResponse(
