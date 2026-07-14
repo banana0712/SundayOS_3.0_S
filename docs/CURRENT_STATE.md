@@ -9,15 +9,16 @@
 ## 1. 总览一眼
 
 ```
-文档体系     ✅ 7 文件工程文档体系 + 5 份指南（调试/部署/Shortcuts/Ollama）+ 1 份世界设定
+文档体系     ✅ 7 文件工程文档体系 + 6 份指南 + 1 份世界设定 + CHANGELOG
 3.0 设计集   ✅ 13 技术规范 + 11 ADR（001-011）+ 论文附录
 后端实现     🟡 Phase 1 ~90%：引擎路由✅ 记忆三层✅ 反思✅ ReAct✅ SSE✅ 护栏✅ Chat UI✅
-             71 测试全过（1.0s）。Runtime 骨骼固化、ContextBuilder 跨会话上下文、优化完成
-前端实现     ✅ Dashboard 实时数据 + Brain + Memory Center + Chat 流式 + 云端部署
-             useDrift 移除、代码分割、SSE 节流优化完成
-iPhone 集成  🟡 API 就绪（`/api/shortcuts/chat`）+ 配置文档，待真机验证
-服务器       ✅ 小兔云香港 2H2G，24/7，Console 已部署到 /console
-Git 状态     已全量推送，与 origin/main 同步
+             71 测试全过（1.0s）。Runtime 骨骼√ ContextBuilder √ 优化完成
+前端实现     ✅ Dashboard 实时数据 + Brain + Memory Center + Chat 流式 + 移动端全适配
+             useDrift 移除、代码分割、SSE 节流、off-canvas 侧栏、safe-area 安全区
+版本管理     ✅ v0.7.0 · SemVer + Keep a Changelog · VERSION 文件 · /api/version 端点
+iPhone 集成  🟡 API 就绪 + PWA manifest · 待真机验证
+服务器       ✅ 小兔云香港 2H2G，24/7，Console 部署到 /console
+Git 状态     本地 3 commit 积压，待网络恢复推送
 ```
 
 ---
