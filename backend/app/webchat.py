@@ -348,10 +348,17 @@ const T = {
 // ── state ──────────────────────────────────────
 let lang = localStorage.getItem("sunday.lang") ||
   (navigator.language.startsWith("zh") ? "zh" : "en");
-// Try token first (new auth), fall back to old API key
-let sundayToken = localStorage.getItem("sunday.token") || localStorage.getItem("sunday.key") || "";
-// Deprecated: kept for backward compat with old ensureKey() calls
-let apiKey = sundayToken;
+// Auth: prefer sunday.token (user login), fall back to sunday.key (legacy API key)
+let sundayToken = localStorage.getItem("sunday.token") || "";
+let apiKey = sundayToken || localStorage.getItem("sunday.key") || "";
+// Validate stored token on startup: if it's an old API key (not a real token),
+// clear it so the user sees the login/register card.
+if (!sundayToken && apiKey) {
+  // Has old-format key but no token — show login card
+  // (Old API keys won't work with the new X-Sunday-Token header)
+  sundayToken = ""; apiKey = "";
+  localStorage.removeItem("sunday.key");
+}
 let convId = null;          // current conversation id
 let convList = [];          // cached conversation list
 let sidebarOpen = true;

@@ -92,10 +92,13 @@ CONV = ConversationStore()
 API_KEY = os.getenv("SUNDAY_API_KEY", "change-me-in-production")
 
 # ── Preference store (ADR-012) ──
+# Own connection (not shared with MEMORY) to avoid SQLITE_BUSY / lock
+# conflicts when both stores are written concurrently.
 import sqlite3 as _sqlite3
 _DB_PATH = os.getenv("SUNDAY_DB_PATH", "./sunday.db")
-_PREF_DB = MEMORY._conn if hasattr(MEMORY, "_conn") else _sqlite3.connect(_DB_PATH)
-PREF_STORE = PreferenceStore(_PREF_DB)
+PREF_STORE = PreferenceStore(_sqlite3.connect(_DB_PATH, check_same_thread=False))
+PREF_STORE._conn.execute("PRAGMA journal_mode=WAL")
+PREF_STORE._conn.execute("PRAGMA busy_timeout=5000")
 
 # ── User account store ──
 USER_STORE = UserStore(_DB_PATH)
@@ -143,12 +146,20 @@ def _auth(x_api_key: str | None = None,
 
     Dual auth: User token first (for logged-in users), then API key
     (for admin / Shortcuts / scripts). Token is the primary path.
+
+    If the token value is actually an old-format API key (migration path),
+    it is checked as an API key before being rejected.
     """
     # Path 1: User token (webchat/console login)
     if x_sunday_token:
         user = USER_STORE.get_user_by_token(x_sunday_token)
         if user is not None:
             return user.id
+        # Token not found — could be an old-format API key (migration)
+        # Try it as an API key before rejecting
+        if x_sunday_token == API_KEY:
+            import hashlib
+            return "user_" + hashlib.sha256(x_sunday_token.encode("utf-8")).hexdigest()[:16]
         raise HTTPException(status_code=401, detail="Token 已过期，请重新登录")
 
     # Path 2: Legacy API key (admin / Shortcuts / curl)
@@ -609,7 +620,6 @@ async def post_feedback(req: FeedbackRequest,
                          x_api_key: str | None = Header(default=None), x_sunday_token: str | None = Header(default=None, alias="X-Sunday-Token")) -> dict:
     """Submit feedback on a reply. Adjusts quality score and parses NL feedback."""
     user_id = _auth(x_api_key, x_sunday_token)
-    user_id = user_id
 
     # 1. Adjust engine quality (immediate, lightweight)
     if req.engine_id:
@@ -622,23 +632,28 @@ async def post_feedback(req: FeedbackRequest,
     # 2. Parse natural-language feedback (async, optional)
     parsed = {}
     if req.feedback_text.strip():
-        parsed = await parse_feedback(req.feedback_text, ROUTER)
-        # Apply parsed preferences
-        if parsed.get("action") in ("prompt_inject", "both"):
-            prefs = get_user_preferences(user_id, PREF_STORE) or \
-                    PREF_STORE.get(user_id)  # forces creation
-            if parsed.get("dimension") == "style" and parsed.get("style_value"):
-                prefs.style = parsed["summary"]
-            if parsed.get("dimension") == "topic" and parsed.get("topic_preference"):
-                prefs.topics[parsed["topic"]] = parsed["topic_preference"]
-            prefs.add_feedback(req.feedback_text, req.rating,
-                              req.engine_id, parsed.get("summary", ""))
-            PREF_STORE.save(prefs)
+        try:
+            parsed = await parse_feedback(req.feedback_text, ROUTER)
+            # Apply parsed preferences
+            if parsed.get("action") in ("prompt_inject", "both"):
+                prefs = PREF_STORE.get(user_id)
+                if parsed.get("dimension") == "style" and parsed.get("style_value"):
+                    prefs.style = parsed["summary"]
+                if parsed.get("dimension") == "topic" and parsed.get("topic_preference"):
+                    prefs.topics[parsed["topic"]] = parsed["topic_preference"]
+                prefs.add_feedback(req.feedback_text, req.rating,
+                                  req.engine_id, parsed.get("summary", ""))
+                PREF_STORE.save(prefs)
+        except Exception:
+            pass  # NL parsing is best-effort; never block feedback
 
-    # 3. Log to feedback_log
-    PREF_STORE.log_feedback(
-        user_id, req.msg_preview, req.engine_id,
-        req.rating, req.feedback_text, parsed)
+    # 3. Log to feedback_log (best-effort, don't crash on DB errors)
+    try:
+        PREF_STORE.log_feedback(
+            user_id, req.msg_preview, req.engine_id,
+            req.rating, req.feedback_text, parsed)
+    except Exception:
+        pass
 
     return {
         "rating": req.rating,
