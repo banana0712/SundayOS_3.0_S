@@ -719,9 +719,6 @@ async def update_prefs(body: dict,
 
 # ── Admin panel (ADR-013) ── extracted to routers/admin.py (main.py split) ──
 # _require_admin now lives in deps.require_admin (single source of truth).
-from .routers import admin as _admin_router
-from .routers import conversations as _conv_router
-app.include_router(_admin_router.router)
 
 
 class EmpathyRequest(BaseModel):
@@ -1085,190 +1082,13 @@ async def chat_stream(req: ChatRequest,
     )
 
 
-class MemoryStoreRequest(BaseModel):
-    content: str
-    memory_type: str = "episodic"
-    importance: int = 5
+# ── Router registration (after all route definitions) ──
+from .routers import admin as _admin_router
+from .routers import conversations as _conv_router
+from .routers import memory as _memory_router
+
+app.include_router(_admin_router.router)
+app.include_router(_conv_router.router)
+app.include_router(_memory_router.router)
 
 
-@app.post("/api/memory/store")
-async def memory_store(req: MemoryStoreRequest, x_api_key: str | None = Header(default=None), x_sunday_token: str | None = Header(default=None, alias="X-Sunday-Token")) -> dict:
-    user_id = _auth(x_api_key, x_sunday_token)
-    node = MEMORY.add(MemoryNode(
-        content=req.content, user_id=user_id,
-        type=MemoryType(req.memory_type), importance=req.importance,
-    ))
-    return {"id": node.id, "stored": True}
-
-
-class MemorySearchRequest(BaseModel):
-    query: str
-    k: int = 12
-
-
-@app.post("/api/memory/search")
-async def memory_search(req: MemorySearchRequest, x_api_key: str | None = Header(default=None), x_sunday_token: str | None = Header(default=None, alias="X-Sunday-Token")) -> dict:
-    user_id = _auth(x_api_key, x_sunday_token)
-    hits = MEMORY.retrieve(req.query, user_id=user_id, k=req.k)
-    return {
-        "results": [
-            {
-                "id": h.node.id, "content": h.node.content, "type": h.node.type,
-                "score": round(h.score, 4),
-                "components": {
-                    "recency": round(h.recency, 3),
-                    "importance": round(h.importance, 3),
-                    "relevance": round(h.relevance, 3),
-                },
-            }
-            for h in hits
-        ]
-    }
-
-
-# --- reflection endpoints ---------------------------------------------------
-
-class ReflectionRequest(BaseModel):
-    force: bool = False  # skip threshold check if True
-
-
-@app.post("/api/memory/reflect")
-async def memory_reflect(req: ReflectionRequest,
-                         x_api_key: str | None = Header(default=None), x_sunday_token: str | None = Header(default=None, alias="X-Sunday-Token")) -> dict:
-    """Trigger reflection (L1→L2). Generative Agents two-step pipeline.
-
-    Unless force=True, respects the importance threshold.
-    Returns the generated insights with their evidence IDs.
-    """
-    user_id = _auth(x_api_key, x_sunday_token)
-    from .memory.reflection import _should_reflect
-    if not req.force and not _should_reflect(MEMORY, user_id):
-        return {"triggered": False, "insights": [],
-                "message": "Importance threshold not reached. Use force=true to override."}
-    insights = await run_reflection(MEMORY, user_id, ROUTER)
-    return {
-        "triggered": True,
-        "insights": insights,
-        "message": f"Generated {len(insights)} reflections.",
-    }
-
-
-@app.get("/api/memory/reflections")
-async def memory_reflections(limit: int = 20,
-                             x_api_key: str | None = Header(default=None), x_sunday_token: str | None = Header(default=None, alias="X-Sunday-Token")) -> dict:
-    """List generated REFLECTION nodes for the current user, newest first."""
-    user_id = _auth(x_api_key, x_sunday_token)
-    from .memory.schema import MemoryType
-    all_nodes = MEMORY.all(user_id)
-    reflections = [
-        n for n in all_nodes if n.type == MemoryType.REFLECTION
-    ]
-    reflections.sort(key=lambda n: n.created_at, reverse=True)
-    return {
-        "reflections": [
-            {
-                "id": r.id,
-                "content": r.content,
-                "evidence_ids": r.evidence_ids,
-                "importance": r.importance,
-                "created_at": r.created_at.isoformat(),
-            }
-            for r in reflections[:limit]
-        ]
-    }
-
-
-@app.post("/api/memory/consolidate")
-async def memory_consolidate(x_api_key: str | None = Header(default=None), x_sunday_token: str | None = Header(default=None, alias="X-Sunday-Token")) -> dict:
-    """Run L1 consolidation — archive expired low-importance memories.
-
-    For the full L3 experience layer (merge + archive + extract + patterns),
-    use POST /api/experience/run.
-    """
-    user_id = _auth(x_api_key, x_sunday_token)
-    dropped = MEMORY.archive_expired(threshold=0.4)
-    total = len(MEMORY.all())
-    return {
-        "dropped": dropped,
-        "remaining": total,
-        "message": f"Archived {dropped} expired memories. {total} remaining.",
-    }
-
-
-# --- experience layer endpoints (L2→L3) -------------------------------------
-
-@app.post("/api/experience/run")
-async def experience_run(x_api_key: str | None = Header(default=None), x_sunday_token: str | None = Header(default=None, alias="X-Sunday-Token")) -> dict:
-    """Run the full L3 Experience layer.
-
-    Performs three operations from From Storage to Experience (2026):
-    1. CONSOLIDATION — merge similar memories, archive expired, extract semantics
-    2. PATTERN DETECTION — find repeating behavioral patterns → EXPERIENCE nodes
-    3. PROCEDURAL PRIMITIVE — detect recurring tool sequences → skill proposals
-
-    This is the nightly batch job for Sunday's cognitive evolution.
-    Uses the current user's identity (derived from API key).
-    """
-    user_id = _auth(x_api_key, x_sunday_token)
-    user = user_id
-    result = await run_experience_layer(MEMORY, ROUTER, user)
-    return {
-        "user": user,
-        "consolidation": result["consolidation"],
-        "patterns_found": len(result["patterns"]),
-        "patterns": result["patterns"],
-        "primitives_found": len(result["primitives"]),
-        "primitives": result["primitives"],
-    }
-
-
-@app.get("/api/experience/nodes")
-async def experience_nodes(limit: int = 20,
-                           x_api_key: str | None = Header(default=None), x_sunday_token: str | None = Header(default=None, alias="X-Sunday-Token")) -> dict:
-    """List EXPERIENCE nodes for the current user."""
-    user_id = _auth(x_api_key, x_sunday_token)
-    from .memory.schema import MemoryType
-    all_nodes = MEMORY.all(user_id)
-    exp_nodes = [n for n in all_nodes if n.type == MemoryType.EXPERIENCE]
-    exp_nodes.sort(key=lambda n: n.created_at, reverse=True)
-    return {
-        "experiences": [
-            {
-                "id": n.id,
-                "content": n.content,
-                "source": n.source,
-                "importance": n.importance,
-                "evidence_ids": n.evidence_ids,
-                "created_at": n.created_at.isoformat(),
-            }
-            for n in exp_nodes[:limit]
-        ]
-    }
-
-
-@app.get("/api/memory/stats")
-async def memory_stats(x_api_key: str | None = Header(default=None), x_sunday_token: str | None = Header(default=None, alias="X-Sunday-Token")) -> dict:
-    """Return memory statistics — count by type, embedder info."""
-    user_id = _auth(x_api_key, x_sunday_token)
-    from .memory.embedding import embedding_dim as edim, embed as emb_fn
-    all_nodes = MEMORY.all(user_id)
-    by_type: dict[str, int] = {}
-    for n in all_nodes:
-        by_type[str(n.type.value)] = by_type.get(str(n.type.value), 0) + 1
-    is_semantic = _has_semantic
-    return {
-        "total_nodes": len(all_nodes),
-        "by_type": by_type,
-        "embedder": "semantic" if is_semantic else "hash",
-        "embedding_dim": edim(),
-        "db_type": "sqlite" if isinstance(MEMORY, SQLiteMemoryStore) else "memory",
-    }
-
-
-@app.delete("/api/memory/{mem_id}")
-async def memory_delete(mem_id: str, x_api_key: str | None = Header(default=None), x_sunday_token: str | None = Header(default=None, alias="X-Sunday-Token")) -> dict:
-    user_id = _auth(x_api_key, x_sunday_token)
-    node = MEMORY.get(mem_id)
-    if node is None or node.user_id != user_id:
-        raise HTTPException(status_code=404, detail="memory not found")
-    return {"deleted": MEMORY.delete(mem_id)}
