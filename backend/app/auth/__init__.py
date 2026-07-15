@@ -178,6 +178,23 @@ class UserStore:
             token=row[3], created_at=row[4],
         )
 
+    # ── Admin ──────────────────────────────────────────────────────────
+
+    def list_all(self) -> list[dict]:
+        """Admin: return all registered users with metadata (no password hashes)."""
+        rows = self._conn.execute(
+            "SELECT id, username, token, created_at FROM users ORDER BY created_at DESC"
+        ).fetchall()
+        return [
+            {"id": r[0], "username": r[1],
+             "has_token": bool(r[2]), "created_at": r[3]}
+            for r in rows
+        ]
+
+    def count(self) -> int:
+        row = self._conn.execute("SELECT COUNT(*) FROM users").fetchone()
+        return row[0] if row else 0
+
     # ── Token management ─────────────────────────────────────────────
 
     def invalidate_token(self, token: str) -> None:

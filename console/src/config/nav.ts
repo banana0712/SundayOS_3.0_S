@@ -1,25 +1,8 @@
 import {
-  LayoutDashboard,
-  Brain,
-  MessagesSquare,
-  Database,
-  UserCog,
-  HeartPulse,
-  Waypoints,
-  Bot,
-  Workflow,
-  Sparkles,
-  BookOpen,
-  Plug,
-  Wrench,
-  Boxes,
-  CalendarClock,
-  Activity,
-  ScrollText,
-  Gauge,
-  Settings,
-  Code2,
-  Webhook,
+  LayoutDashboard, Brain, MessagesSquare, Database, UserCog,
+  HeartPulse, Waypoints, Bot, Workflow, Sparkles, BookOpen,
+  Plug, Wrench, Boxes, CalendarClock, Activity, ScrollText,
+  Gauge, Settings, Code2, Webhook, ShieldCheck,
   type LucideIcon,
 } from "lucide-react";
 
@@ -60,6 +43,8 @@ export const NAV: NavItem[] = [
   { slug: "developer", label: "Developer", icon: Code2, group: "System", status: "planned" },
   { slug: "api", label: "API", icon: Webhook, group: "System", status: "planned" },
   { slug: "settings", label: "Settings", icon: Settings, group: "System", status: "planned" },
+
+  { slug: "admin", label: "Admin", icon: ShieldCheck, group: "Admin", status: "done" },
 ];
 
-export const NAV_GROUPS = ["Overview", "Cognition", "Build", "Operate", "System"];
+export const NAV_GROUPS = ["Overview", "Cognition", "Build", "Operate", "System", "Admin"];

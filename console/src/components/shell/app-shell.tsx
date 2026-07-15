@@ -20,6 +20,7 @@ const DashboardView = lazy(() => import("@/components/views/dashboard").then(m =
 const BrainView = lazy(() => import("@/components/views/brain").then(m => ({ default: m.BrainView })));
 const MemoryView = lazy(() => import("@/components/views/memory").then(m => ({ default: m.MemoryView })));
 const ComingSoon = lazy(() => import("@/components/views/coming-soon").then(m => ({ default: m.ComingSoon })));
+const AdminPanel = lazy(() => import("@/components/views/admin-panel").then(m => ({ default: m.AdminPanel })));
 
 function ViewFallback() {
   return (
@@ -40,6 +41,7 @@ function ViewRouter() {
   else if (view === "dashboard") content = <DashboardView />;
   else if (view === "brain") content = <BrainView />;
   else if (view === "memory") content = <MemoryView />;
+  else if (view === "admin") content = <AdminPanel />;
   else {
     const item = NAV.find((n) => n.slug === view);
     content = <ComingSoon title={item?.label ?? view} />;

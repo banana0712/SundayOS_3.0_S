@@ -682,6 +682,83 @@ async def update_prefs(body: dict,
     return {"user_id": user_id, "style": prefs.style, "topics": prefs.topics}
 
 
+# ── Admin panel (ADR-013: owner-gated management endpoints) ──────────
+
+def _require_admin(x_api_key, x_sunday_token) -> str:
+    """Admin gate: only API_KEY users (owner) can access admin endpoints."""
+    user_id = _auth(x_api_key, x_sunday_token)
+    # Token users: check if it's the first/owner account
+    # For now, only legacy API_KEY users have admin access
+    if x_api_key == API_KEY or x_sunday_token == API_KEY:
+        return user_id
+    raise HTTPException(status_code=403, detail="需要管理员权限")
+
+
+@app.get("/api/admin/users")
+async def admin_users(x_api_key: str | None = Header(default=None), x_sunday_token: str | None = Header(default=None, alias="X-Sunday-Token")) -> dict:
+    """Admin: list all registered users with stats."""
+    user_id = _require_admin(x_api_key, x_sunday_token)
+    users = USER_STORE.list_all()
+    # Enrich with per-user memory/conversation counts
+    enriched = []
+    for u in users:
+        mem_count = len(MEMORY.all(u["id"]))
+        enriched.append({**u, "memory_count": mem_count, "conv_count": 0})
+    return {"users": enriched, "total": len(enriched)}
+
+
+@app.get("/api/admin/usage")
+async def admin_usage(x_api_key: str | None = Header(default=None), x_sunday_token: str | None = Header(default=None, alias="X-Sunday-Token")) -> dict:
+    """Admin: global usage metrics."""
+    user_id = _require_admin(x_api_key, x_sunday_token)
+    total_mem = len(MEMORY.all())
+    total_conv = CONV.count()
+    return {
+        "users": USER_STORE.count(),
+        "total_memories": total_mem,
+        "total_conversations": total_conv,
+        "engines": [
+            {"id": e.id, "quality": e.caps.quality,
+             "calls": runtime.engine_calls.get(e.id, 0),
+             "primary": e.caps.primary}
+            for e in ENGINES
+        ],
+        "runtime": {
+            "messages_today": runtime.messages_today,
+            "calls_today": runtime.calls_today,
+            "tokens_today": runtime.tokens_today,
+            "cost_today": round(runtime.cost_today, 6),
+            "avg_latency_ms": round(runtime.avg_latency, 1),
+        },
+    }
+
+
+@app.get("/api/admin/health")
+async def admin_health(x_api_key: str | None = Header(default=None), x_sunday_token: str | None = Header(default=None, alias="X-Sunday-Token")) -> dict:
+    """Admin: full system health snapshot."""
+    user_id = _require_admin(x_api_key, x_sunday_token)
+    from .memory.embedding import embedding_dim as edim
+    return {
+        "server": {
+            "version": _version_str,
+            "python": __import__("sys").version,
+        },
+        "db": {
+            "type": "sqlite" if isinstance(MEMORY, SQLiteMemoryStore) else "memory",
+            "users": USER_STORE.count(),
+            "memories": len(MEMORY.all()),
+            "conversations": CONV.count(),
+        },
+        "engines": [
+            {"id": e.id, "quality": e.caps.quality, "healthy": True,
+             "calls": runtime.engine_calls.get(e.id, 0)}
+            for e in ENGINES
+        ],
+        "embedder": "semantic" if _has_semantic else "hash",
+        "embedding_dim": edim(),
+    }
+
+
 class EmpathyRequest(BaseModel):
     message: str
 
