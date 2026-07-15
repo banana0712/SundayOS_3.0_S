@@ -720,6 +720,7 @@ async def update_prefs(body: dict,
 # ── Admin panel (ADR-013) ── extracted to routers/admin.py (main.py split) ──
 # _require_admin now lives in deps.require_admin (single source of truth).
 from .routers import admin as _admin_router
+from .routers import conversations as _conv_router
 app.include_router(_admin_router.router)
 
 
@@ -1082,93 +1083,6 @@ async def chat_stream(req: ChatRequest,
         media_type="text/event-stream",
         headers={"X-Accel-Buffering": "no", "Cache-Control": "no-cache"},
     )
-
-
-# --- conversation endpoints ---------------------------------------------------
-
-class ConversationCreateRequest(BaseModel):
-    title: str = "新对话"
-
-
-@app.post("/api/conversations")
-async def conversation_create(req: ConversationCreateRequest,
-                              x_api_key: str | None = Header(default=None), x_sunday_token: str | None = Header(default=None, alias="X-Sunday-Token")) -> dict:
-    user_id = _auth(x_api_key, x_sunday_token)
-    conv = CONV.create(user_id, req.title)
-    return {
-        "id": conv.id,
-        "title": conv.title,
-        "user_id": conv.user_id,
-        "message_count": len(conv.messages),
-        "created_at": conv.created_at.isoformat(),
-        "updated_at": conv.updated_at.isoformat(),
-    }
-
-
-@app.get("/api/conversations")
-async def conversation_list(
-        x_api_key: str | None = Header(default=None), x_sunday_token: str | None = Header(default=None, alias="X-Sunday-Token")) -> dict:
-    user_id = _auth(x_api_key, x_sunday_token)
-    convs = CONV.list(user_id)
-    return {
-        "conversations": [
-            {
-                "id": c.id,
-                "title": c.title,
-                "message_count": len(c.messages),
-                "created_at": c.created_at.isoformat(),
-                "updated_at": c.updated_at.isoformat(),
-            }
-            for c in convs
-        ]
-    }
-
-
-@app.get("/api/conversations/{conv_id}")
-async def conversation_get(conv_id: str,
-                           x_api_key: str | None = Header(default=None), x_sunday_token: str | None = Header(default=None, alias="X-Sunday-Token")) -> dict:
-    user_id = _auth(x_api_key, x_sunday_token)
-    conv = CONV.get(conv_id)
-    if conv is None:
-        raise HTTPException(status_code=404, detail="conversation not found")
-    if conv.user_id != user_id:
-        raise HTTPException(status_code=404, detail="conversation not found")
-    return {
-        "id": conv.id,
-        "title": conv.title,
-        "user_id": conv.user_id,
-        "messages": conv.messages,
-        "message_count": len(conv.messages),
-        "created_at": conv.created_at.isoformat(),
-        "updated_at": conv.updated_at.isoformat(),
-    }
-
-
-@app.delete("/api/conversations/{conv_id}")
-async def conversation_delete(conv_id: str,
-                              x_api_key: str | None = Header(default=None), x_sunday_token: str | None = Header(default=None, alias="X-Sunday-Token")) -> dict:
-    user_id = _auth(x_api_key, x_sunday_token)
-    conv = CONV.get(conv_id)
-    if conv is None or conv.user_id != user_id:
-        raise HTTPException(status_code=404, detail="conversation not found")
-    return {"deleted": CONV.delete(conv_id)}
-
-
-class ConversationRenameRequest(BaseModel):
-    title: str
-
-
-@app.put("/api/conversations/{conv_id}/title")
-async def conversation_rename(conv_id: str, req: ConversationRenameRequest,
-                              x_api_key: str | None = Header(default=None), x_sunday_token: str | None = Header(default=None, alias="X-Sunday-Token")) -> dict:
-    user_id = _auth(x_api_key, x_sunday_token)
-    conv = CONV.get(conv_id)
-    if conv is None or conv.user_id != user_id:
-        raise HTTPException(status_code=404, detail="conversation not found")
-    ok = CONV.rename(conv_id, req.title)
-    if not ok:
-        raise HTTPException(status_code=404, detail="conversation not found")
-    return {"id": conv_id, "title": req.title}
 
 
 class MemoryStoreRequest(BaseModel):
