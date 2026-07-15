@@ -2,7 +2,7 @@
 
 > 基于当前实际进度（见 [CURRENT_STATE.md](CURRENT_STATE.md)）制定的开发计划。
 
-**版本** 1.1 · **最后更新** 2026-07-15
+**版本** 1.2 · **最后更新** 2026-07-16
 
 ---
 
@@ -11,25 +11,30 @@
 | 里程碑 | 状态 | 完成度 |
 |--------|------|--------|
 | 工程文档体系 | ✅ | 10 文件 + ADR 索引 + 调试说明书 |
-| Phase 1 · 心智骨架 | ✅ | ~95% |
-| Phase 1.5 · 反馈学习系统 (ADR-012) | 🟡 | ~60%（今晚完成核心通路） |
+| Phase 1 · 心智骨架 | ✅ | ~96% |
+| Phase 1.5 · 反馈学习系统 (ADR-012) | ✅ | 100% |
+| **Phase 1.6 · 架构重构（main.py 拆分）** | 🟡 | **50%（4/8 域完成）** |
 | Phase 2 · 认知增强 | ⬜ | 0% |
 | Phase 3 · 体验进化 | ⬜ | 0% |
 
-### 2026-07-15 变更摘要
+### 2026-07-16 变更摘要
 
 | 模块 | 状态 | 说明 |
 |------|------|------|
-| 偏好档案存储 | ✅ | UserPreferences + PreferenceStore (SQLite) |
-| NL 反馈解析器 | ✅ | LLM 驱动的 parse_feedback() |
-| 偏好注入 prompt | ✅ | build_prompt_with_prefs() → 每次聊天自动注入 |
-| 反馈 API | ✅ | POST /api/feedback + GET /api/preferences |
-| 反馈 UI | ✅ | webchat 👍👎 按钮 + 文字反馈 |
-| ADR-012 | ✅ | 完整架构决策文档 |
-| 移动端重设计 | ✅ | 底部导航、sidebar overlay、键盘适配、44px 触摸 |
-| 豆包引擎 | ✅ | sunday-chat (quality=0.85, primary=True) → 火山引擎 |
-| 质量优先路由 | ✅ | ADR-011: L2 日常质量权重 40%、成本 10% |
-| 运行日志 | ✅ | 结构化 JSON logger + /api/debug/routing 调试端点 |
+| main.py 域拆分 | 🟡 50% | 4/8 域完成：admin / conversations / memory / preferences<br>1360 → 1008 行（减少 352 行）<br>剩余：debug / auth / misc / chat |
+| Router 架构 | ✅ | `app/routers/` 目录 + 4 个域文件<br>`deps.py` 统一认证（单一真相源）<br>所有路由使用 `Depends(get_current_user)` |
+| 测试覆盖 | ✅ | 86 测试全部通过（1.3s） |
+
+### 下一步计划（v0.10.2）
+
+| 任务 | 优先级 | 说明 |
+|------|--------|------|
+| 拆分 debug 域（4 端点） | 🔴 高 | overview / env / routing / context |
+| 拆分 auth 域（3 端点） | 🔴 高 | register / login / me |
+| 拆分 misc 域（若干端点） | 🔴 高 | version / skills / persona / engines / empathy / shortcuts / pwa / stats |
+| 拆分 chat 域（2 端点） | 🔴 高 | 最复杂，需抽取共享 helper（护栏/共情/上下文/记忆/统计）<br>**必须消除平行逻辑（ADR 警告）** |
+| 修复 `/api/preferences/update` | 🟡 中 | FastAPI body 解析问题 |
+| main.py 最终清理 | 🔴 高 | 目标 < 300 行（只保留装配层 + router 注册 + 根路由） |
 
 ### 长期路线图
 

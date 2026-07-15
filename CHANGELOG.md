@@ -10,6 +10,29 @@
 
 ---
 
+## [0.10.1] — 2026-07-16
+
+### Changed
+- **main.py 域拆分推进（4/8 完成）**：
+  - 创建 `app/routers/conversations.py`（5 端点）——对话 CRUD
+  - 创建 `app/routers/memory.py`（9 端点）——记忆存储/搜索/反思/合并 + 经验层
+  - 创建 `app/routers/preferences.py`（3 端点）——偏好获取/更新 + 反馈提交
+  - main.py 从 1360 → 1008 行（减少 352 行，完成 46%）
+  - 修正路由注册时机：所有 router 注册移至文件末尾（在所有 @app 路由之后），避免注册顺序问题
+  - 所有路由使用 `Depends(get_current_user)` 统一认证，替换手动 `_auth()` 调用
+  - 所有全局引用改为 `ctx.*`（ctx.memory / ctx.conversations / ctx.pref_store / ctx.engines / ctx.router）
+  - 86 个测试全部通过，HTTP 端点验证工作正常
+
+### Fixed
+- 修正 memory router 导入错误：`SQLiteMemoryStore` 从 `sqlite_store.py` 导入，不是 `store.py`
+- 修正 memory/stats 端点：`_has_semantic` 从 main.py 导入（未放入 ctx）
+- 修正 preferences router 导入：`get_user_preferences` 和 `parse_feedback` 从 `persona` 模块导入
+
+### Known Issues
+- `/api/preferences/update` 端点存在 body 解析错误（pre-existing，v0.10.0 生产环境同样失败，非本次引入）
+
+---
+
 ## [0.10.0] — 2026-07-15
 
 ### Added

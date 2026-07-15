@@ -2,7 +2,7 @@
 
 > 诚实、可验证的当前状态。每次功能开发完成后必须更新本文件。
 
-**版本** 2.2 · **最后更新** 2026-07-15（v0.10.0）
+**版本** 2.3 · **最后更新** 2026-07-16（v0.10.1）
 
 ---
 
@@ -14,10 +14,11 @@
 后端实现     ✅ Phase 1 ~96%：引擎路由✅ 记忆三层✅ 反思✅ ReAct✅ SSE✅
               护栏✅ Chat UI✅ 账号系统✅ 反馈学习✅ 多气泡✅ 质量路由✅
               对话持久化✅ 语义 embedding（Qwen）✅ Dashboard 健康/事件真数据✅
-前端口       86 测试全过（1.2s）
+              **Router 拆分进行中 4/8 完成（1360 → 1008 行）**
+前端口       86 测试全过（1.3s）
 前端实现     ✅ Dashboard + Brain + Memory + Chat + 移动端全适配 + 登录 UI
 防腐机制     ✅ ENGINEERING_CONTRACT（规矩）+ /checkup（裁判）闭环
-版本管理     ✅ v0.10.0 · SemVer + Keep a Changelog
+版本管理     ✅ v0.10.1 · SemVer + Keep a Changelog
 服务器       ✅ 小兔云香港 2H2G 24/7 · /console + / 双入口
 ```
 
@@ -29,7 +30,7 @@
 
 | 能力 | 代码位置 |
 |------|---------|
-| 启动 FastAPI 服务（43 路由） | `backend/app/main.py` |
+| 启动 FastAPI 服务（43 路由） | `backend/app/main.py` + 4 个 router 文件 |
 | 动态路由（质量优先 + 5 维度评分） | `backend/app/engines/router.py` |
 | 路由决策可追溯（RouteTrace） | 同上 |
 | 引擎失败自动回退 + 熔断器 | 同上 + `tests/test_router.py` |
@@ -61,23 +62,20 @@
 |------|------|--------|------|
 | Token 无过期 + 无登出端点 | 安全性弱（个人使用可接受） | 🟡 中 | 下次 |
 | 无撞库保护 | 同上 | 🟡 中 | 部署公网前 |
-| main.py ~1380 行未拆分 | 维护性差 | 🟡 中 | 下次（APIRouter 拆域） |
+| main.py ~1008 行（拆分 4/8 完成） | 维护性改善中 | 🟡 中 | 继续拆：debug/auth/misc/chat |
 | 前端未接真实后端数据 | 仪表盘全 mock | 🟡 中 | 下次 |
 | 无前端自动化测试 | — | 🟢 低 | Phase 2 |
 | runtime 未收口（模块级全局与 runtime.* 并存） | 双份真相源 | 🟡 中 | 下次 |
 | i18n 硬编码 30+ 处 | Console 有中英混杂 | 🟢 低 | UI 审计时 |
+| `/api/preferences/update` body 解析错误 | 前端 UI 更新偏好失败 | 🟡 中 | 需调查 FastAPI body 参数 |
 
 ---
 
-## 3. 近期变更（2026-07-15）
+## 3. 近期变更（2026-07-16）
 
 | 模块 | 内容 |
 |------|------|
-| 对话持久化 | `SQLiteConversationStore` —— 会话/消息落 SQLite，重启不丢（`app/conversation/sqlite_store.py`） |
-| 语义 Embedding | Qwen text-embedding-v3（1024-dim）接入 + 启动自动重嵌入 + `/health` 降级可见（`app/memory/embedding.py`） |
-| 认证系统 | 注册/登录/Token 双轨制（`app/auth/__init__.py`） |
-| 反馈学习 | NL 解析 → 偏好注入 prompt（ADR-012） |
-| 多气泡 | burst_split 自然分段（Stephanie NAACL 2025） |
+| Router 拆分 | 4 个域拆出（admin / conversations / memory+experience / preferences+feedback）<br>main.py 1360 → 1008 行（减少 352 行，完成 46%）<br>创建 `app/routers/` 目录 + `deps.py` 统一认证<br>所有拆出路由使用 `Depends(get_current_user)` 认证<br>全局引用改为 `ctx.*`（单一真相源）<br>86 测试全部通过 + HTTP 端点验证 |
 | 质量路由 | ADR-011 quality-first 权重表 |
 | 自定义引擎 | CUSTOM_API_KEY → 豆包 doubao-seed-character-260628 |
 | 移动端重设计 | 底部导航、sidebar overlay、44px 触摸、键盘适配 |

@@ -2,7 +2,7 @@
 
 > 记录所有已完成的重大设计决策、技术选型和架构选择。这不是 ADR 的替代——ADR 记录「决策与理由」的过程，本文档是你快速查阅「我们做了什么决定」的索引。每个决策引用其 ADR 正文。
 
-**版本** 2.0 · **最后更新** 2026-07-15
+**版本** 2.1 · **最后更新** 2026-07-16
 
 ---
 
@@ -25,10 +25,45 @@
 | 13 | ★ 反馈学习系统 | NL 反馈 → LLM 解析 → 偏好注入 prompt（PLUS/VAC 范式） | [ADR-012](adr/ADR-012-feedback-learning-system.md) |
 | 14 | 用户账号系统 | 注册/登录/Token 双轨制 + pbkdf2 密码哈希 | 本文件 §2.9 |
 | 15 | 自然多气泡消息 | burst_split 自然段落下发，活人聊天节奏（Stephanie NAACL 2025） | 本文件 §2.10 |
+| 16 | ★ Router 拆分架构 | main.py 按域拆分至 `app/routers/`，deps.py 单一认证源 | 本文件 §2.11 |
 
 ---
 
 ## 2. 关键设计选择及其影响
+
+### 2.11 Router 拆分架构（v0.10.1，进行中）
+
+**我们做了什么**：
+- 将 main.py 中的 API 路由按业务域拆分至 `app/routers/` 目录
+- 创建 `app/deps.py` 作为共享上下文和认证的单一真相源
+  - `_Context` 类封装所有共享单例（memory / conversations / pref_store / engines / router / user_store）
+  - `get_current_user()` 和 `get_admin()` 统一认证逻辑，通过 FastAPI `Depends()` 注入
+- 所有拆出的路由使用 `ctx.*` 访问全局状态，不直接 import main.py
+- Router 注册统一放在 main.py 文件末尾（所有 @app 路由定义之后）
+
+**已落地的代码**（v0.10.1，4/8 域完成）：
+- `backend/app/deps.py`：共享上下文 + 认证依赖
+- `backend/app/routers/admin.py`：3 个管理端点（users / usage / health）
+- `backend/app/routers/conversations.py`：5 个对话端点（create / list / get / delete / rename）
+- `backend/app/routers/memory.py`：9 个端点（7 memory + 2 experience）
+- `backend/app/routers/preferences.py`：3 个端点（get / update / feedback）
+- main.py 从 1360 → 1008 行（减少 352 行，完成 46%）
+
+**为什么这样做**：
+- 解决 main.py 上帝文件问题（原 1360+ 行，目标 < 300 行）
+- 消除认证逻辑重复（原 main.py 每个端点手动调用 `_auth()`）
+- 消除全局变量直接访问（原代码直接用 `MEMORY` / `CONV` 等全局变量）
+- 遵循开发契约规则：单文件 ≤ 600 行、按域拆分、单一真相源
+
+**剩余工作**（目标 v0.10.2）：
+- debug 域（4 端点）：overview / env / routing / context
+- auth 域（3 端点）：register / login / me
+- misc 域（若干端点）：version / skills / persona / engines / empathy / shortcuts / pwa / stats
+- chat 域（2 端点，最难）：需抽取共享 helper，消除平行逻辑
+- main.py 最终清理至 < 300 行
+
+**已知问题**：
+- `/api/preferences/update` body 解析失败（pre-existing，非本次引入）
 
 ### 2.1 认知引擎抽象层（ADR-008）——头号决策
 
