@@ -627,94 +627,6 @@ async def persona_view(reload: bool = False,
     }
 
 
-# ── Feedback & Preferences (ADR-012) ──────────────────────────────────
-
-@app.get("/api/preferences")
-async def get_prefs(x_api_key: str | None = Header(default=None), x_sunday_token: str | None = Header(default=None, alias="X-Sunday-Token")) -> dict:
-    """Return the current user's preference profile."""
-    user_id = _auth(x_api_key, x_sunday_token)
-    user_id = user_id
-    prefs = get_user_preferences(user_id, PREF_STORE)
-    return {
-        "user_id": user_id,
-        "style": prefs.style if prefs else "",
-        "topics": prefs.topics if prefs else {},
-        "history": prefs.history[-10:] if prefs else [],
-    }
-
-
-class FeedbackRequest(BaseModel):
-    rating: int  # 1 = 👍, -1 = 👎
-    feedback_text: str = ""
-    engine_id: str = ""
-    msg_preview: str = ""  # first 60 chars of the AI reply
-
-
-@app.post("/api/feedback")
-async def post_feedback(req: FeedbackRequest,
-                         x_api_key: str | None = Header(default=None), x_sunday_token: str | None = Header(default=None, alias="X-Sunday-Token")) -> dict:
-    """Submit feedback on a reply. Adjusts quality score and parses NL feedback."""
-    user_id = _auth(x_api_key, x_sunday_token)
-
-    # 1. Adjust engine quality (immediate, lightweight)
-    if req.engine_id:
-        for e in ENGINES:
-            if e.id == req.engine_id:
-                delta = 0.01 if req.rating > 0 else -0.02
-                e.caps.quality = max(0.1, min(1.0, e.caps.quality + delta))
-                break
-
-    # 2. Parse natural-language feedback (async, optional)
-    parsed = {}
-    if req.feedback_text.strip():
-        try:
-            parsed = await parse_feedback(req.feedback_text, ROUTER)
-            # Apply parsed preferences
-            if parsed.get("action") in ("prompt_inject", "both"):
-                prefs = PREF_STORE.get(user_id)
-                if parsed.get("dimension") == "style" and parsed.get("style_value"):
-                    prefs.style = parsed["summary"]
-                if parsed.get("dimension") == "topic" and parsed.get("topic_preference"):
-                    prefs.topics[parsed["topic"]] = parsed["topic_preference"]
-                prefs.add_feedback(req.feedback_text, req.rating,
-                                  req.engine_id, parsed.get("summary", ""))
-                PREF_STORE.save(prefs)
-        except Exception:
-            pass  # NL parsing is best-effort; never block feedback
-
-    # 3. Log to feedback_log (best-effort, don't crash on DB errors)
-    try:
-        PREF_STORE.log_feedback(
-            user_id, req.msg_preview, req.engine_id,
-            req.rating, req.feedback_text, parsed)
-    except Exception:
-        pass
-
-    return {
-        "rating": req.rating,
-        "engine_adjusted": req.engine_id,
-        "parsed_feedback": parsed,
-    }
-
-
-@app.post("/api/preferences/update")
-async def update_prefs(body: dict,
-                        x_api_key: str | None = Header(default=None), x_sunday_token: str | None = Header(default=None, alias="X-Sunday-Token")) -> dict:
-    """Directly set a preference value via API (for settings UI)."""
-    user_id = _auth(x_api_key, x_sunday_token)
-    user_id = user_id
-    prefs = PREF_STORE.get(user_id)
-
-    if "style" in body:
-        prefs.style = body["style"]
-    if "topic_prefs" in body:
-        for topic, pref in body["topic_prefs"].items():
-            prefs.topics[topic] = pref
-    if "engine_prefs" in body:
-        prefs.engine_prefs.update(body["engine_prefs"])
-
-    PREF_STORE.save(prefs)
-    return {"user_id": user_id, "style": prefs.style, "topics": prefs.topics}
 
 
 # ── Admin panel (ADR-013) ── extracted to routers/admin.py (main.py split) ──
@@ -1086,9 +998,11 @@ async def chat_stream(req: ChatRequest,
 from .routers import admin as _admin_router
 from .routers import conversations as _conv_router
 from .routers import memory as _memory_router
+from .routers import preferences as _pref_router
 
 app.include_router(_admin_router.router)
 app.include_router(_conv_router.router)
 app.include_router(_memory_router.router)
+app.include_router(_pref_router.router)
 
 
