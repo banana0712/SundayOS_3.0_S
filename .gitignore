@@ -46,6 +46,8 @@ Thumbs.db
 _docs_extract.txt
 _exp_extract.txt
 
-# Claude Code 本地设置
-.claude/
+# Claude Code 本地设置（但保留 skills）
+.claude/*
+!.claude/skills/
+!.claude/skills/*.md
 sunday_repo.tar.gz
