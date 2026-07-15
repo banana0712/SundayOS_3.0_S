@@ -13,7 +13,7 @@ import math
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
-from .embedding import cosine, embed
+from .embedding import cosine, embed, embedding_dim, embedding_dim
 from .schema import MemoryNode, MemoryType
 
 RECENCY_DECAY = 0.995  # per hour (docs §4.4)
@@ -103,6 +103,24 @@ class MemoryStore:
             s.node.last_access = now
             s.node.access_count += 1
         return top
+
+    # -- re-embedding (embedder upgrade migration) --------------------------
+    def reembed_stale(self) -> int:
+        """Re-embed nodes whose stored vector dim != the current embedder dim.
+
+        When the embedder is upgraded (e.g. hash 128-dim → Qwen 1024-dim),
+        old vectors become uncomparable: cosine() returns 0.0 on a length
+        mismatch, so every stale memory silently scores 0 relevance. This
+        walks all nodes and recomputes embeddings for the mismatched ones.
+        Returns the number re-embedded. Safe to call repeatedly (idempotent).
+        """
+        target = embedding_dim()
+        count = 0
+        for node in list(self._nodes.values()):
+            if not node.embedding or len(node.embedding) != target:
+                node.embedding = embed(node.content)
+                count += 1
+        return count
 
     # -- consolidation helper (docs §4.7) -----------------------------------
     def archive_expired(self, threshold: float = 0.4, now: datetime | None = None) -> int:

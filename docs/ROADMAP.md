@@ -60,7 +60,7 @@
 | 模块 | 交付物 | 验证方式 |
 |------|--------|---------|
 | 认知引擎层 | Provider 抽象 + 4 引擎 + 动态路由 + 回退链 + 熔断 | 11 测试 + RouteTrace 可见 |
-| 记忆 L1 Storage | Memory Stream + 复合评分检索 + **SQLite 持久化** | 17 测试 + API 可调用 |
+| 记忆 L1 Storage | Memory Stream + 复合评分检索 + **SQLite 持久化** + **语义 embedding（Qwen text-embedding-v3）+ 启动自动重嵌入** | 24 测试 + API 可调用 |
 | 记忆 L2 Reflection | 反思引擎（Generative Agents 两步流程） | 自动触发 + 手动 API + 测试 |
 | LLM 重要性打分 | Generative Agents 论文 1-10 自动评分 | chat 端点内联，异步非阻塞 |
 | 双系统判据 | needs_reasoner() + risk_level() + BeliefState 数据模型 | 6 测试 |
@@ -69,7 +69,7 @@
 | 护栏基础 | L2-L4 规则（注入/越狱/长度）+ L3 PII 脱敏 + L5 工具风险 | 4 测试 |
 | Chat UI | 双栏布局（会话侧边栏 + 聊天区）+ 4 视图切换 | 浏览器打开即用 |
 | Console | Dashboard 实时数据 + Brain + Memory Center + Chat 流式 | 前端构建通过 |
-| 会话管理 | ConversationStore + 6 端点 + webchat/console 侧边栏 | 8 测试 |
+| 会话管理 | ConversationStore + 6 端点 + **SQLite 持久化（跨重启存活）** + webchat/console 侧边栏 | 16 测试 |
 | 调试体系 | `/api/debug/overview` + Swagger UI + 调试面板 + DEBUGGING.md | 文档 + API |
 | 部署 | Railway 一键部署 | 已配置 |
 

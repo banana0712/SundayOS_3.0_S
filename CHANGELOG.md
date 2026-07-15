@@ -10,6 +10,57 @@
 
 ---
 
+## [0.10.0] — 2026-07-15
+
+### Added
+- **开发契约** (`docs/ENGINEERING_CONTRACT.md`)：动手改代码前必读的硬性规矩——
+  三条铁律 + 硬限制（单文件 ≤600 行、路由按域拆、单一真相源）+ 完成定义 + 欠债规则 +
+  能力分级。与 `/checkup` 成闭环：契约定规矩，checkup 查违规。已接入 `/bootstrap` 必读清单。
+- **`/checkup` 体检 skill** (`.claude/skills/checkup.md`)：项目主人一键自检，大白话报告。
+  扫 6 块——安全红线 / 生命体征 / 屎山预警 / 假数据演戏 / 双真相漂移 / 文档诚实度。
+  以开发契约为评判标准。所有检测命令已 dry-run 验证。
+- **Dashboard 健康卡 + 事件卡接真实数据**：
+  - `/api/stats/dashboard` 新增 `system_health`（db / embedder_provider / degraded / dim / engines / version）
+  - 健康卡删除写死的 Qdrant/Redis/Postgres/MCP 假绿灯（项目根本没用这些组件）+ 假 CPU/RAM
+  - 事件卡改读 `recent_events` 真实事件流 + 相对时间
+- **main.py 拆分启动（地基 + admin 域）**：
+  - `app/deps.py`——共享上下文 `ctx` + 单一真相源认证（`auth` / `require_admin` + FastAPI Depends 包装）。main.py 的 `_auth` 改为薄壳委托，消除认证的双实现。
+  - `app/routers/admin.py`——第一个按域拆出的路由文件（admin 3 端点）。
+  - main.py 1442 → 1360 行；admin 路由与 `_require_admin` 移出。行为逐字不变（86 测试 + curl 验证：3 端点 200、401/403 门禁不变、非 admin token 403）。
+- **交接计划（供后续 AI 执行）**：
+  - `docs/guides/INVITE_SYSTEM_PLAN.md` + `app/auth/invites.py`（InviteStore 骨架，已单测）——邀请制多用户
+  - `docs/guides/DASHBOARD_REAL_DATA_PLAN.md`——Dashboard 去 mock 全套计划
+  - `docs/guides/MAIN_SPLIT_PLAN.md`——main.py 拆分模式 + 剩余域顺序（地基已铺、admin 已拆）
+
+### Fixed
+- **流式聊天路径不记录统计**：`/api/chat/stream`（Console 实际使用的路径）此前不调用
+  `_record_stats`，导致 messages_today / tokens / recent_events 全部漏记、仪表盘长期少算真实用量。
+  现在流式路径与非流式一致记录用量与事件。
+- `/api/chat` 非流式路径补上 `event` 文案（此前只有 ReAct 分支记事件，普通对话不记）。
+
+## [0.9.0] — 2026-07-15
+
+### Added
+- **对话持久化** (`app/conversation/sqlite_store.py`)：
+  - `SQLiteConversationStore(ConversationStore)`——子类化沿用 `sqlite_store.py`（记忆）pattern
+  - 消息以 JSON 列存储，datetime 走 ISO + `_ensure_utc`，`user_id + updated_at DESC` 建索引
+  - `main.py` 启动处将 `CONV` 换为 SQLite 版，带 try/except 回退内存版
+  - **对话及消息现可跨服务器重启存活**（此前内存 dict，重启即失忆）
+  - `tests/test_conversation_persist.py`（8 测试：跨连接持久化、消息存活、删除落库、用户隔离）
+- **语义 Embedding（Qwen text-embedding-v3）** (`app/memory/embedding.py`)：
+  - `try_semantic_embedder()` 新增 Qwen/DashScope 识别（`QWEN_API_KEY`）——OpenAI 兼容端点，1024-dim，强中文
+  - 优先级：Ollama（本地）> Qwen > OpenAI；`embedder_provider()` 暴露当前后端
+  - API 路径上线前做 test-embed 门槛：网络/key 失败则不 commit 升级，`/health` 如实报 `degraded`
+  - `MemoryStore.reembed_stale()` + SQLite override：embedder 升级后（hash 128 → Qwen 1024）自动重嵌旧记忆，修复维度不匹配导致的静默 0 相关度
+  - 启动后台线程触发重嵌入，不阻塞启动
+  - `/health` + `/api/admin/health` 新增 `embedder_provider` / `embedder_degraded` 降级可见性
+  - `tests/test_reembed.py`（7 测试：维度迁移、幂等、持久化、降级门槛）
+
+### Fixed
+- `/api/admin/users` 的 `conv_count` 从写死 `0` 改为按用户真实会话数（`len(CONV.list(uid))`）
+
+---
+
 ## [0.8.0] — 2026-07-15
 
 ### Added

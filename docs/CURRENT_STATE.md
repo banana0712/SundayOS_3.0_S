@@ -2,20 +2,22 @@
 
 > 诚实、可验证的当前状态。每次功能开发完成后必须更新本文件。
 
-**版本** 2.0 · **最后更新** 2026-07-15
+**版本** 2.2 · **最后更新** 2026-07-15（v0.10.0）
 
 ---
 
 ## 1. 总览一眼
 
 ```
-文档体系     ✅ 10 文件工程文档体系 + 6 份指南 + 12 ADR + CHANGELOG
+文档体系     ✅ 工程文档 + 指南 + 12 ADR + CHANGELOG + 开发契约 + /checkup 体检
 3.0 设计集   ✅ 13 技术规范 + 12 ADR（001-012）+ 论文附录
-后端实现     ✅ Phase 1 ~95%：引擎路由✅ 记忆三层✅ 反思✅ ReAct✅ SSE✅
+后端实现     ✅ Phase 1 ~96%：引擎路由✅ 记忆三层✅ 反思✅ ReAct✅ SSE✅
               护栏✅ Chat UI✅ 账号系统✅ 反馈学习✅ 多气泡✅ 质量路由✅
-前端口       71 测试全过（1.0s）
+              对话持久化✅ 语义 embedding（Qwen）✅ Dashboard 健康/事件真数据✅
+前端口       86 测试全过（1.2s）
 前端实现     ✅ Dashboard + Brain + Memory + Chat + 移动端全适配 + 登录 UI
-版本管理     ✅ v0.8.0 · SemVer + Keep a Changelog
+防腐机制     ✅ ENGINEERING_CONTRACT（规矩）+ /checkup（裁判）闭环
+版本管理     ✅ v0.10.0 · SemVer + Keep a Changelog
 服务器       ✅ 小兔云香港 2H2G 24/7 · /console + / 双入口
 ```
 
@@ -59,10 +61,10 @@
 |------|------|--------|------|
 | Token 无过期 + 无登出端点 | 安全性弱（个人使用可接受） | 🟡 中 | 下次 |
 | 无撞库保护 | 同上 | 🟡 中 | 部署公网前 |
-| main.py ~1100 行未拆分 | 维护性差 | 🟡 中 | 下次 |
+| main.py ~1380 行未拆分 | 维护性差 | 🟡 中 | 下次（APIRouter 拆域） |
 | 前端未接真实后端数据 | 仪表盘全 mock | 🟡 中 | 下次 |
 | 无前端自动化测试 | — | 🟢 低 | Phase 2 |
-| 语义 Embedding 未全面启用 | 中文检索靠 hash | 🟡 中 | 待 Ollama 配置 |
+| runtime 未收口（模块级全局与 runtime.* 并存） | 双份真相源 | 🟡 中 | 下次 |
 | i18n 硬编码 30+ 处 | Console 有中英混杂 | 🟢 低 | UI 审计时 |
 
 ---
@@ -71,6 +73,8 @@
 
 | 模块 | 内容 |
 |------|------|
+| 对话持久化 | `SQLiteConversationStore` —— 会话/消息落 SQLite，重启不丢（`app/conversation/sqlite_store.py`） |
+| 语义 Embedding | Qwen text-embedding-v3（1024-dim）接入 + 启动自动重嵌入 + `/health` 降级可见（`app/memory/embedding.py`） |
 | 认证系统 | 注册/登录/Token 双轨制（`app/auth/__init__.py`） |
 | 反馈学习 | NL 解析 → 偏好注入 prompt（ADR-012） |
 | 多气泡 | burst_split 自然分段（Stephanie NAACL 2025） |
@@ -83,13 +87,15 @@
 
 ---
 
-## 4. 测试覆盖（71 passed / 1.0s）
+## 4. 测试覆盖（86 passed / 1.2s）
 
 | 测试文件 | 数量 | 覆盖范围 |
 |---------|------|---------|
 | `test_router.py` | 9 | 路由打分、隐私/工具约束、回退链、熔断器 |
 | `test_memory.py` | 7 | 语义排序、重要性加成、recency 衰减、用户隔离 |
 | `test_dispatch_guardrails.py` | 10 | 双系统判据、注入拦截、PII 脱敏、工具风险 |
+| `test_conversation_persist.py` | 8 | 会话跨连接持久化、消息存活、删除落库、用户隔离 |
+| `test_reembed.py` | 7 | 维度失配检测、重嵌入迁移、幂等性、检索恢复 |
 | 其他 | 45 | 会话管理、共情、ReAct、护栏、体验层 |
 | `npm run build` | ✅ | TypeScript 类型检查通过 |
 

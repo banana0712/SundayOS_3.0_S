@@ -225,6 +225,34 @@ class SQLiteMemoryStore(MemoryStore):
         self._conn.commit()
         return top
 
+    # -- re-embedding (embedder upgrade migration) ----------------------------
+
+    def reembed_stale(self) -> int:
+        """Re-embed nodes whose stored vector dim != the current embedder dim,
+        persisting each new vector back to SQLite. See MemoryStore.reembed_stale
+        for why this is needed after an embedder upgrade. Returns the count.
+        """
+        from .embedding import embedding_dim as _edim
+        target = _edim()
+        rows = self._conn.execute(
+            "SELECT id, content, embedding FROM memory_nodes"
+        ).fetchall()
+        count = 0
+        for mem_id, content, emb_json in rows:
+            emb = json.loads(emb_json) if emb_json else None
+            if emb and len(emb) == target:
+                continue
+            new_vec = embed(content)
+            self._conn.execute(
+                "UPDATE memory_nodes SET embedding = ? WHERE id = ?",
+                (json.dumps(new_vec), mem_id),
+            )
+            self._nodes.pop(mem_id, None)  # invalidate cache
+            count += 1
+        if count:
+            self._conn.commit()
+        return count
+
     # -- consolidation --------------------------------------------------------
 
     def archive_expired(self, threshold: float = 0.4,

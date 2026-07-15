@@ -111,13 +111,13 @@ export function DashboardView() {
       {/* Third row: health + timeline + events */}
       <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-3">
         <motion.div variants={fade} custom={10} initial="hidden" animate="show">
-          <HealthCard />
+          <HealthCard stats={stats} />
         </motion.div>
         <motion.div variants={fade} custom={11} initial="hidden" animate="show">
           <GoalCard />
         </motion.div>
         <motion.div variants={fade} custom={12} initial="hidden" animate="show">
-          <EventsCard />
+          <EventsCard stats={stats} />
         </motion.div>
       </div>
     </div>
@@ -296,41 +296,40 @@ function MoodCard() {
   );
 }
 
-/* ── Health (CPU/RAM/etc) ───────────────────────────────── */
-function HealthCard() {
+/* ── Health (real system state from /api/stats/dashboard) ─── */
+type SystemHealth = {
+  db?: string;
+  embedder_provider?: string;
+  embedder_degraded?: boolean;
+  embedding_dim?: number;
+  engines_healthy?: number;
+  version?: string;
+};
+
+function HealthCard({ stats }: { stats: Record<string, unknown> | null }) {
   const { t } = useI18n();
-  const cpu = useDrift(0.34, 0.08, 3000);
-  const ram = useDrift(0.58, 0.05, 4200);
+  const h = (stats?.system_health ?? null) as SystemHealth | null;
   return (
     <Card className="h-full p-5">
       <h3 className="text-subtitle text-primary">{t("dash.health")}</h3>
       <p className="mb-4 text-caption text-tertiary">{t("dash.health.sub")}</p>
-      <div className="flex items-center justify-around">
-        <div className="flex flex-col items-center gap-2">
-          <Donut value={cpu} color="var(--accent)" label="CPU" />
-          <div className="flex items-center gap-1 text-caption text-tertiary">
-            <Cpu className="h-3 w-3" /> CPU
-          </div>
+      {h ? (
+        <div className="space-y-2 border-t border-border pt-4">
+          <HealthRow label={`数据库 · ${h.db ?? "—"}`} ok={!!h.db} />
+          <HealthRow
+            label={`Embedder · ${h.embedder_provider ?? "—"}${
+              h.embedding_dim ? ` (${h.embedding_dim}d)` : ""
+            }${h.embedder_degraded ? " · 降级" : ""}`}
+            ok={!h.embedder_degraded}
+          />
+          <HealthRow label={`引擎 · ${h.engines_healthy ?? 0} 在线`} ok={!!h.engines_healthy} />
+          {h.version && <HealthRow label={`版本 · v${h.version}`} ok />}
         </div>
-        <div className="flex flex-col items-center gap-2">
-          <Donut value={ram} color="#5e5ce6" label="RAM" />
-          <div className="flex items-center gap-1 text-caption text-tertiary">
-            <MemoryStick className="h-3 w-3" /> RAM
-          </div>
+      ) : (
+        <div className="border-t border-border pt-4 text-caption text-tertiary">
+          等待后端数据…
         </div>
-        <div className="flex flex-col items-center gap-2">
-          <Donut value={0.992} color="var(--success)" label="Uptime" />
-          <div className="flex items-center gap-1 text-caption text-tertiary">
-            <CheckCircle2 className="h-3 w-3" /> Uptime
-          </div>
-        </div>
-      </div>
-      <div className="mt-5 space-y-2 border-t border-border pt-4">
-        <HealthRow label="Vector DB · Qdrant" ok />
-        <HealthRow label="Redis cache" ok />
-        <HealthRow label="Postgres" ok />
-        <HealthRow label="MCP gateway" ok />
-      </div>
+      )}
     </Card>
   );
 }
@@ -396,41 +395,43 @@ function GoalCard() {
   );
 }
 
-/* ── Recent events (timeline) ───────────────────────────── */
-function EventsCard() {
+/* ── Recent events (real, from /api/stats/dashboard) ──────── */
+function fmtAgo(iso: string): string {
+  const then = new Date(iso).getTime();
+  if (Number.isNaN(then)) return "";
+  const s = Math.max(0, (Date.now() - then) / 1000);
+  if (s < 60) return `${Math.floor(s)}s ago`;
+  if (s < 3600) return `${Math.floor(s / 60)}m ago`;
+  if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
+  return `${Math.floor(s / 86400)}d ago`;
+}
+
+function EventsCard({ stats }: { stats: Record<string, unknown> | null }) {
   const { t } = useI18n();
-  const events = [
-    { icon: Brain, label: "Reflection completed", meta: "2m ago", tone: "text-accent" },
-    { icon: Database, label: "Memory consolidated (+14)", meta: "9m ago", tone: "text-[#64d2ff]" },
-    { icon: Users, label: "Trust +0.03 with Banana", meta: "21m ago", tone: "text-success" },
-    { icon: Wrench, label: "Tool: github.pr opened", meta: "38m ago", tone: "text-[#ff9f0a]" },
-    { icon: Sparkles, label: "Model switched → opus-4.8", meta: "1h ago", tone: "text-[#5e5ce6]" },
-  ];
+  const events = (stats?.recent_events ?? []) as { time: string; event: string }[];
   return (
     <Card className="h-full p-5">
       <div className="mb-4 flex items-center justify-between">
         <h3 className="text-subtitle text-primary">{t("dash.events")}</h3>
-        <button className="flex items-center gap-0.5 text-caption text-tertiary transition-colors hover:text-secondary">
-          {t("dash.events.all")} <ArrowUpRight className="h-3 w-3" />
-        </button>
       </div>
-      <div className="relative space-y-4 pl-1">
-        <div className="absolute bottom-2 left-[10px] top-2 w-px bg-border" />
-        {events.map((e) => {
-          const Icon = e.icon;
-          return (
-            <div key={e.label} className="relative flex items-center gap-3">
-              <span className={cn("relative z-10 flex h-5 w-5 items-center justify-center rounded-full border border-border bg-[var(--surface)]", e.tone)}>
-                <Icon className="h-3 w-3" />
+      {events.length === 0 ? (
+        <p className="text-caption text-tertiary">暂无事件记录</p>
+      ) : (
+        <div className="relative space-y-4 pl-1">
+          <div className="absolute bottom-2 left-[10px] top-2 w-px bg-border" />
+          {events.map((e, i) => (
+            <div key={i} className="relative flex items-center gap-3">
+              <span className="relative z-10 flex h-5 w-5 items-center justify-center rounded-full border border-border bg-[var(--surface)] text-accent">
+                <Activity className="h-3 w-3" />
               </span>
               <div className="flex-1">
-                <div className="text-[13px] text-secondary">{e.label}</div>
+                <div className="text-[13px] text-secondary">{e.event}</div>
               </div>
-              <span className="text-[11px] text-tertiary tnum">{e.meta}</span>
+              <span className="text-[11px] text-tertiary tnum">{fmtAgo(e.time)}</span>
             </div>
-          );
-        })}
-      </div>
+          ))}
+        </div>
+      )}
     </Card>
   );
 }

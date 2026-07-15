@@ -85,6 +85,7 @@ SundayOS/
 
 | 你的任务 | 必须读 | 选读 |
 |----------|--------|------|
+| **动手改代码前（任何 AI）** | **docs/ENGINEERING_CONTRACT.md**（硬性规矩，必读） | `/checkup` 查违规 |
 | 写后端代码 | ARCHITECTURE.md §2-4 · CURRENT_STATE.md §3 | docs/3.0/ 对应章节 |
 | 写前端代码 | DESIGN_SYSTEM.md · CURRENT_STATE.md §4 | console/src/ 现有代码 |
 | 做架构决策 | ARCHITECTURE.md · PROJECT_MEMORY.md | docs/adr/ 索引 → 相关 ADR |
@@ -92,6 +93,9 @@ SundayOS/
 | 设计 UI/UX | DESIGN_SYSTEM.md | console/src/app/globals.css · tailwind.config.ts |
 | 写测试 | CURRENT_STATE.md §3 | backend/tests/ 现有测试 |
 | 部署/运维 | docs/guides/DEPLOY_RAILWAY.md · docs/guides/BACKEND_USAGE.md | — |
+| 建邀请制多用户 | **docs/guides/INVITE_SYSTEM_PLAN.md**（交接计划，骨架已在 `backend/app/auth/invites.py`） | — |
+| Dashboard 接真数据（去 mock） | **docs/guides/DASHBOARD_REAL_DATA_PLAN.md**（交接计划，按卡片分级 + file:line） | console/src/components/views/dashboard.tsx |
+| 继续拆分 main.py | **docs/guides/MAIN_SPLIT_PLAN.md**（模式已定，地基+admin 已完成，按域顺序滚） | app/deps.py · app/routers/admin.py（范例） |
 | 调试/排错 | **docs/guides/DEBUGGING.md**（第一个看这个） | /health · /api/debug/env · /docs |
 | 安全审查 | ARCHITECTURE.md §6 · PROJECT_MEMORY.md §4 | docs/3.0/08-security-and-autonomy.md |
 | 新成员入职 | 本文件 → CURRENT_STATE.md → ARCHITECTURE.md | SUNDAY_CONTEXT.md（理解理念） |

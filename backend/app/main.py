@@ -29,10 +29,12 @@ from .engines.registry import build_engines
 from .engines.router import CognitiveRequest, CognitiveRouter
 from .guardrails.pipeline import GuardrailTripwire, check_input, redact_pii
 from .conversation.store import ConversationStore
+from .conversation.sqlite_store import SQLiteConversationStore
 from .memory.schema import MemoryNode, MemoryType
 from .memory.store import MemoryStore
 from .memory.sqlite_store import SQLiteMemoryStore
-from .memory.embedding import auto_upgrade_embedder, set_embedder
+from .memory.embedding import (auto_upgrade_embedder, set_embedder,
+                               embedder_provider, embedding_dim)
 from .memory.importance import score_importance
 from .memory.reflection import run_reflection, schedule_reflection
 from .memory.experience import run_experience_layer
@@ -88,7 +90,14 @@ except Exception:
     log.warn("startup", event="memory_sqlite_fallback",
              detail="SQLite store init failed, falling back to in-memory MemoryStore")
     MEMORY = MemoryStore()
-CONV = ConversationStore()
+# Use SQLite-backed conversations (persist across restarts). Same interface as
+# the in-memory store; falls back to in-memory if the SQLite store can't open.
+try:
+    CONV = SQLiteConversationStore(db_path=_db_path)
+except Exception:
+    log.warn("startup", event="conv_sqlite_fallback",
+             detail="SQLite conversation store init failed, falling back to in-memory")
+    CONV = ConversationStore()
 API_KEY = os.getenv("SUNDAY_API_KEY", "change-me-in-production")
 
 # ── Preference store (ADR-012) ──
@@ -112,6 +121,24 @@ try:
 except Exception:
     pass  # hash embedder is always available
 
+# If the embedder upgraded (e.g. hash 128-dim → Qwen 1024-dim), old memories
+# still carry hash vectors that cosine() can't compare (dim mismatch → 0.0
+# relevance). Re-embed them so semantic retrieval actually sees history. Runs
+# in a daemon thread: re-embedding N nodes = N API calls, which must not block
+# server startup. Retrieval degrades gracefully for the few seconds it takes.
+if _has_semantic:
+    def _reembed_bg() -> None:
+        try:
+            n = MEMORY.reembed_stale()
+            if n:
+                log.info("startup", event="reembed_done",
+                         detail=f"re-embedded {n} stale memories to "
+                                f"{embedder_provider()} ({embedding_dim()}-dim)")
+        except Exception as e:  # never crash startup over a migration
+            log.warn("startup", event="reembed_failed", detail=str(e))
+    import threading as _threading
+    _threading.Thread(target=_reembed_bg, daemon=True).start()
+
 # ---- Runtime: the canonical container for all subsystems -----------------
 runtime = Runtime(
     engines=ENGINES,
@@ -123,6 +150,22 @@ runtime = Runtime(
 )
 RT = runtime  # shorter alias
 runtime.semantic_embedder_available = _has_semantic
+
+# --- Populate the shared context so routers/ can reach these singletons -------
+# (ENGINEERING_CONTRACT §1: routes move to routers/<domain>.py; they read state
+#  from app.deps, never by importing main.py.)
+from . import deps as _deps
+_deps.set_context(
+    user_store=USER_STORE,
+    memory=MEMORY,
+    conversations=CONV,
+    pref_store=PREF_STORE,
+    runtime=runtime,
+    engines=ENGINES,
+    api_key=API_KEY,
+    owner_username=os.getenv("SUNDAY_OWNER_USERNAME", "").strip(),
+    version=_version_str,
+)
 
 # --- usage stats (in-memory, resets on restart) ------------------------------
 # Deprecated: use runtime.messages_today etc. and runtime.record_call() directly.
@@ -142,35 +185,12 @@ def _record_stats(engine_id: str | None, latency_ms: float,
 
 def _auth(x_api_key: str | None = None,
           x_sunday_token: str | None = None) -> str:
-    """Authenticate request. Returns user_id on success, raises 401 on failure.
+    """Authenticate request. Delegates to deps.auth (single source of truth).
 
-    Dual auth: User token first (for logged-in users), then API key
-    (for admin / Shortcuts / scripts). Token is the primary path.
-
-    If the token value is actually an old-format API key (migration path),
-    it is checked as an API key before being rejected.
+    Kept as a thin wrapper because ~31 call sites in main.py still use it;
+    they migrate to Depends(get_current_user) as routes move to routers/.
     """
-    # Path 1: User token (webchat/console login)
-    if x_sunday_token:
-        user = USER_STORE.get_user_by_token(x_sunday_token)
-        if user is not None:
-            return user.id
-        # Token not found — could be an old-format API key (migration)
-        # Try it as an API key before rejecting
-        if x_sunday_token == API_KEY:
-            import hashlib
-            return "user_" + hashlib.sha256(x_sunday_token.encode("utf-8")).hexdigest()[:16]
-        raise HTTPException(status_code=401, detail="Token 已过期，请重新登录")
-
-    # Path 2: Legacy API key (admin / Shortcuts / curl)
-    if x_api_key:
-        if x_api_key == API_KEY:
-            import hashlib
-            return "user_" + hashlib.sha256(x_api_key.encode("utf-8")).hexdigest()[:16]
-        raise HTTPException(status_code=401, detail="invalid or missing API Key")
-
-    # No credentials at all
-    raise HTTPException(status_code=401, detail="请先登录或提供 API Key")
+    return _deps.auth(x_api_key, x_sunday_token)
 
 
 
@@ -365,14 +385,19 @@ async def version_info() -> dict:
 
 @app.get("/health")
 async def health() -> dict:
-    from .memory.embedding import embedding_dim as edim
+    from .memory.embedding import embedding_dim as edim, embedder_provider as eprov
+    provider = eprov()
     return {
         "status": "ok",
         "version": _version_str,
         "engines": [e.id for e in ENGINES],
         "memory_nodes": len(MEMORY.all()),
         "conversation_count": CONV.count(),
-        "embedder": "semantic" if _has_semantic else "hash",
+        "embedder": "semantic" if provider != "hash" else "hash",
+        "embedder_provider": provider,
+        # degraded = running on the hash fallback (no semantic relevance).
+        # Surfaces silently-broken CJK retrieval when a key is missing/failing.
+        "embedder_degraded": provider == "hash",
         "embedding_dim": edim(),
     }
 
@@ -404,6 +429,16 @@ async def dashboard_stats(x_api_key: str | None = Header(default=None), x_sunday
             1 for n in MEMORY.all() if n.type.value == "experience"
         ),
         "recent_events": runtime.recent_events[:8],
+        # Real system health — replaces the frontend's hardcoded
+        # Qdrant/Redis/Postgres green lights (components we don't even use).
+        "system_health": {
+            "db": "sqlite" if isinstance(MEMORY, SQLiteMemoryStore) else "memory",
+            "embedder_provider": embedder_provider(),
+            "embedder_degraded": embedder_provider() == "hash",
+            "embedding_dim": embedding_dim(),
+            "engines_healthy": len(ENGINES),
+            "version": _version_str,
+        },
     }
 
 
@@ -682,81 +717,10 @@ async def update_prefs(body: dict,
     return {"user_id": user_id, "style": prefs.style, "topics": prefs.topics}
 
 
-# ── Admin panel (ADR-013: owner-gated management endpoints) ──────────
-
-def _require_admin(x_api_key, x_sunday_token) -> str:
-    """Admin gate: only API_KEY users (owner) can access admin endpoints."""
-    user_id = _auth(x_api_key, x_sunday_token)
-    # Token users: check if it's the first/owner account
-    # For now, only legacy API_KEY users have admin access
-    if x_api_key == API_KEY or x_sunday_token == API_KEY:
-        return user_id
-    raise HTTPException(status_code=403, detail="需要管理员权限")
-
-
-@app.get("/api/admin/users")
-async def admin_users(x_api_key: str | None = Header(default=None), x_sunday_token: str | None = Header(default=None, alias="X-Sunday-Token")) -> dict:
-    """Admin: list all registered users with stats."""
-    user_id = _require_admin(x_api_key, x_sunday_token)
-    users = USER_STORE.list_all()
-    # Enrich with per-user memory/conversation counts
-    enriched = []
-    for u in users:
-        mem_count = len(MEMORY.all(u["id"]))
-        enriched.append({**u, "memory_count": mem_count, "conv_count": 0})
-    return {"users": enriched, "total": len(enriched)}
-
-
-@app.get("/api/admin/usage")
-async def admin_usage(x_api_key: str | None = Header(default=None), x_sunday_token: str | None = Header(default=None, alias="X-Sunday-Token")) -> dict:
-    """Admin: global usage metrics."""
-    user_id = _require_admin(x_api_key, x_sunday_token)
-    total_mem = len(MEMORY.all())
-    total_conv = CONV.count()
-    return {
-        "users": USER_STORE.count(),
-        "total_memories": total_mem,
-        "total_conversations": total_conv,
-        "engines": [
-            {"id": e.id, "quality": e.caps.quality,
-             "calls": runtime.engine_calls.get(e.id, 0),
-             "primary": e.caps.primary}
-            for e in ENGINES
-        ],
-        "runtime": {
-            "messages_today": runtime.messages_today,
-            "calls_today": runtime.calls_today,
-            "tokens_today": runtime.tokens_today,
-            "cost_today": round(runtime.cost_today, 6),
-            "avg_latency_ms": round(runtime.avg_latency, 1),
-        },
-    }
-
-
-@app.get("/api/admin/health")
-async def admin_health(x_api_key: str | None = Header(default=None), x_sunday_token: str | None = Header(default=None, alias="X-Sunday-Token")) -> dict:
-    """Admin: full system health snapshot."""
-    user_id = _require_admin(x_api_key, x_sunday_token)
-    from .memory.embedding import embedding_dim as edim
-    return {
-        "server": {
-            "version": _version_str,
-            "python": __import__("sys").version,
-        },
-        "db": {
-            "type": "sqlite" if isinstance(MEMORY, SQLiteMemoryStore) else "memory",
-            "users": USER_STORE.count(),
-            "memories": len(MEMORY.all()),
-            "conversations": CONV.count(),
-        },
-        "engines": [
-            {"id": e.id, "quality": e.caps.quality, "healthy": True,
-             "calls": runtime.engine_calls.get(e.id, 0)}
-            for e in ENGINES
-        ],
-        "embedder": "semantic" if _has_semantic else "hash",
-        "embedding_dim": edim(),
-    }
+# ── Admin panel (ADR-013) ── extracted to routers/admin.py (main.py split) ──
+# _require_admin now lives in deps.require_admin (single source of truth).
+from .routers import admin as _admin_router
+app.include_router(_admin_router.router)
 
 
 class EmpathyRequest(BaseModel):
@@ -943,7 +907,8 @@ async def chat(req: ChatRequest, x_api_key: str | None = Header(default=None), x
         usage = trace.get("usage", {})
         _record_stats(chosen_engine, latency,
                       usage.get("prompt_tokens", 0), usage.get("completion_tokens", 0),
-                      usage.get("cost_usd", 0))
+                      usage.get("cost_usd", 0),
+                      event=f"{chosen_engine} · {req.message[:40]}")
 
     # --- conversation session: auto-create or append ---
     conv_id = req.conversation_id
@@ -1098,6 +1063,19 @@ async def chat_stream(req: ChatRequest,
         CONV.add_message(conv_id, "user", req.message)
         CONV.add_message(conv_id, "assistant", reply,
                          engine=engine, system=system_label)
+
+        # Record usage stats — the streaming path is what the console actually
+        # uses, so without this the dashboard undercounts all real traffic.
+        if use_reasoner:
+            _record_stats("react-loop", react_result.total_latency_ms, 0, 0, 0,
+                          event=f"ReAct · {req.message[:40]}")
+        else:
+            _lat = result.trace.latency_ms if result and result.trace else 0
+            _usage = getattr(result.trace, "usage", {}) or {} if result and result.trace else {}
+            _record_stats(engine, _lat,
+                          _usage.get("prompt_tokens", 0), _usage.get("completion_tokens", 0),
+                          _usage.get("cost_usd", 0),
+                          event=f"{engine} · {req.message[:40]}")
 
     return StreamingResponse(
         _event_stream(),

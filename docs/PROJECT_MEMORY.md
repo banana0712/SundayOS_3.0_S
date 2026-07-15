@@ -150,6 +150,29 @@
 - 人类聊天不会把 300 字塞进一个气泡
 - "正在输入…"动画 + 多气泡节奏 = 活人感
 
+### 2.13 对话持久化 + 语义 embedding（Qwen · 2026-07-15）
+
+**我们做了什么**：
+- `app/conversation/sqlite_store.py`：`SQLiteConversationStore(ConversationStore)` 子类化，
+  消息以 JSON 列存储，datetime 走 ISO + `_ensure_utc`，`user_id + updated_at DESC` 索引。
+  接口与内存版逐字一致，`main.py` 一行替换 + try/except 回退。
+- 语义 embedding：`try_semantic_embedder()` 识别 `QWEN_API_KEY`（DashScope 兼容模式，
+  `text-embedding-v3`，1024-dim），优先级 Ollama > Qwen > OpenAI。
+- 启动自动重嵌入：`reembed_stale()`（base + SQLite 双实现），后台守护线程运行。
+  升级后旧的 128-dim hash 向量与新 1024-dim 语义向量维度不符，`cosine()` 返回 0.0
+  → 静默零相关，必须重嵌入。
+- 降级可见性：`embedder_provider()` + `/health` 暴露 `embedder_provider` / `embedder_degraded`。
+- API 路径升级前先做 test-embed 门槛（对齐 Ollama），防止"key 配了但网络失败"时
+  谎报 provider=qwen/dim=1024 却实际存 128-dim hash，导致每次启动无限重嵌入。
+
+**为什么这样做**：
+- 对话此前是纯内存 dict，重启即失——对"身份来自记忆"的系统是硬伤。
+- hash embedding 不携带语义（CJK 尤甚），削弱记忆检索这一核心能力。
+- 2H2G 服务器跑不动本地 Ollama，故走 API 方案（零额外内存）。
+
+**验证**：86 测试全过；运行时实测对话跨重启存活；migration 以假 embedder 端到端验证
+（1024-dim 向量落盘 + 相关性重新可辨）；降级路径与 test-embed 门槛均实测。
+
 ### 2.5 本地零配置存储（ADR-010）
 
 **我们做了什么**：
@@ -157,8 +180,11 @@
 - 生产栈（Postgres/Redis/Milvus/K8s）作为文档化演进路径
 - 存储经抽象接口访问，起步→生产切换不改上层
 
-**当前限制**：
-- SQLite 和 ChromaDB **尚未接入**——当前只用内存 dict
+**当前状态**（2026-07-15 更新）：
+- SQLite **已接入**：记忆（`sqlite_store.py`）+ 对话（`conversation/sqlite_store.py`）
+  + 偏好 + 用户账号，全部持久化跨重启。
+- 向量检索仍在 SQLite 内做纯 Python 打分（个人规模 ~10K 节点足够快）；
+  ChromaDB/pgvector 作为生产演进路径，暂未接入。
 
 ### 2.6 文档驱动的上下文体系（ADR-011）
 
@@ -234,11 +260,14 @@
 |------|--------|-----------|-----------|
 | Token 无过期/无登出 | 🟡 中 | 个人使用场景风险低；需增加数据库迁移 | 下次 |
 | 无撞库保护 | 🟡 中 | 同上 | 部署公网前 |
-| main.py 未拆分（~1100 行） | 🟡 中 | FastAPI Router 拆分工作量大但零功能影响 | 下次 |
-| 前端数据全是 mock | 🟡 中 | 后端 API 已就绪，对接是接线工作 | 下次 |
+| **明文 key 在本地 readme.txt / 其他.txt** | 🟡 中 | 主人暂缓轮换。文件未进 git、外人不可见，风险仅限本地硬盘。**每次 /checkup 提醒，直至轮换。** | 主人有空时去 provider 后台重新生成 |
+| Dashboard 情绪雷达/目标卡仍演示数据 | 🟡 中 | BeliefState 每请求新建、不持久化，无真实数据源。健康卡/事件卡已接真数据（v0.9.x）。 | 见 DASHBOARD_REAL_DATA_PLAN.md（需先做 BeliefStore 持久化） |
 | 无前端自动化测试 | 🟡 中 | 前端仍在原型阶段 | Phase 2 |
-| 嵌入用 hash 而非模型 | 🟢 低 | 可插拔设计，一行 `set_embedder()` 替换 | Phase 2 |
+| ReAct trace 整条落库 | 🟡 中 | 持久化后 assistant 消息的完整 trace（thought/action/observation，单条~3KB）永久留存，长对话使 `messages` JSON 膨胀。建议：trace 只留摘要落库、完整 trace 走 debug 日志，或加大小上限。 | 下次 |
 | 3 个独立 SQLite 连接 | 🟢 低 | 稳定运行中；合并需重构 Memory/User/Pref Store | Phase 2 |
+| runtime 名存实亡（双份真相源） | 🟡 中 | `runtime.<name>` 与 main.py 模块级全局并存，runtime 仅用于用量统计。子系统本体走全局。 | 结构重构（先建 deps 模块） |
+| main.py 1360 行 / 38 路由（上帝文件，拆分进行中） | 🟡 中 | 地基已铺（`deps.py`）+ admin 域已拆到 `routers/admin.py`。剩余域按 MAIN_SPLIT_PLAN.md 顺序滚。违反契约 §1，只许变小。 | 结构重构，见 docs/guides/MAIN_SPLIT_PLAN.md |
+| webchat.py 1220 行 | 🟡 中 | 同上，上帝文件。 | 结构重构 |
 
 ### 已消灭的债务（Resolved Debt Register）
 
@@ -253,6 +282,8 @@
 | **Sidebar 遮罩层不可点击** | v0.7 | v0.8 | `::after` 伪元素 `z-index:-1` 在 `position:fixed` 内部不可见→改为独立的 `<div id="backdrop">` sibling + JS 点击事件。 | CSS 伪元素做遮罩层是常见的陷阱，永远优先用真实 DOM 元素。 |
 | **引擎错误泄露到前端** | v0.7 | v0.8 | `[引擎调用失败] {raw_error}` → `引擎暂时不可用，请稍后重试。`。完整错误进 log_engine。 | 错误信息对用户无用但对攻击者有用——永远在服务端净化。 |
 | **会话/记忆无所有权校验** | v0.7 | v0.8 | GET/DELETE/PUT 端点新增 `conv.user_id != user_id` 和 `node.user_id != user_id` 检查。 | 认证（你是谁）和授权（你能碰什么）是两件事。我们只做了第一件。 |
+| **对话仅在内存**（重启即失） | v0.5 | v0.9 | SQLiteConversationStore 子类化 ConversationStore，消息 JSON 列存储 + WAL。接口未变→main.py 一行替换。 | 与记忆持久化同一教训：接口稳定，换存储近乎零成本。内存版留作测试基准。 |
+| **嵌入用 hash 而非语义模型** | v0.5 | v0.9 | 接 Qwen text-embedding-v3（OpenAI 兼容 /embeddings，1024-dim）。启动 test-embed 门槛防误升级；升级后后台线程 `reembed_stale()` 重嵌旧 128-dim 向量（否则 cosine 维度不匹配→静默 0 relevance）。`/health` 暴露 `embedder_degraded`。 | 换 embedder 不只是换函数——旧向量维度不匹配会静默失效，必须同步重嵌 + 暴露降级态，否则"升级了"和"没升级"从外部看不出区别。 |
 | 无速率限制 | 🟢 低 | 个人使用 | Phase 4 |
 
 ---
