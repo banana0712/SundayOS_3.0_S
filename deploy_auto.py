@@ -34,11 +34,58 @@ def run_command(ssh, command):
     return exit_status == 0
 
 def deploy():
-    """执行部署"""
+    """执行完整部署流程"""
     print("=" * 50)
-    print("  Sunday OS 自动部署")
-    print("  服务器:", SERVER)
+    print("  Sunday OS 完整部署")
+    print("  本地 → GitHub → 服务器")
     print("=" * 50)
+    print()
+
+    # ========== 第一步：本地推送到 GitHub ==========
+    print(">>> 第一步：推送本地代码到 GitHub")
+    print()
+
+    import subprocess
+    import os
+
+    # 检查是否有未提交的改动
+    result = subprocess.run(['git', 'status', '--short'], capture_output=True, text=True)
+    if result.stdout.strip():
+        print("发现未提交的改动：")
+        print(result.stdout)
+        print()
+
+        # 添加所有改动
+        print(">>> 添加所有改动...")
+        subprocess.run(['git', 'add', '-A'], check=True)
+        print("✓ 已添加")
+        print()
+
+        # 提交
+        commit_msg = f"deploy: auto-deploy from local at {time.strftime('%Y-%m-%d %H:%M:%S')}\n\nCo-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
+        print(">>> 提交改动...")
+        subprocess.run(['git', 'commit', '-m', commit_msg], check=True)
+        print("✓ 已提交")
+        print()
+
+    # 推送到 GitHub
+    print(">>> 推送到 GitHub...")
+    result = subprocess.run(['git', 'push', 'origin', 'main'], capture_output=True, text=True)
+    if result.returncode == 0:
+        print("✓ 推送成功")
+        print()
+    else:
+        # 检查是否已经是最新
+        if 'Everything up-to-date' in result.stderr or 'up to date' in result.stderr.lower():
+            print("✓ 已是最新（无需推送）")
+            print()
+        else:
+            print("✗ 推送失败:")
+            print(result.stderr)
+            return False
+
+    # ========== 第二步：服务器拉取并部署 ==========
+    print(">>> 第二步：服务器部署")
     print()
 
     # 创建SSH客户端
