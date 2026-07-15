@@ -6,6 +6,12 @@
 
 **最快方式**：在对话中输入 `/bootstrap`，AI 自动按 10 步流程对齐项目全貌（详见 `.claude/skills/bootstrap.md`）。
 
+## 常用技能
+
+- `/bootstrap` — 新会话快速启动，对齐项目全貌
+- `/checkup` — 项目健康体检（安全/测试/屎山/文档）
+- `/deploy` — 一键部署到生产服务器（本地→GitHub→服务器）
+
 手动流程：
 1. 读 [SUNDAY_CONTEXT.md](SUNDAY_CONTEXT.md) —— 项目全貌与七条核心理念。
 2. 读 [docs/AI_CONTEXT.md](docs/AI_CONTEXT.md) —— 唯一入口 + 文档地图。
