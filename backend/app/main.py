@@ -7,6 +7,10 @@ from __future__ import annotations
 
 import os
 
+# Disable proxy for API requests (fix proxy connection issues)
+os.environ['NO_PROXY'] = '*'
+os.environ['no_proxy'] = '*'
+
 from dotenv import load_dotenv
 from fastapi import FastAPI, Header, HTTPException, Path as FastAPIPath
 from fastapi.middleware.cors import CORSMiddleware

@@ -72,6 +72,18 @@ def build_engines() -> list:
                 price_in=0, price_out=0,
             ))
 
+    # ── Doubao (豆包) - Volcengine ──────────────────────────────────
+    doubao_key = env("DOUBAO_API_KEY")
+    if doubao_key:
+        base = env("DOUBAO_BASE_URL", "https://ark.cn-beijing.volces.com/api/v3")
+        model = env("DOUBAO_MODEL", "doubao-seed-character-260628")
+        engines.append(OpenAICompatibleProvider(
+            id="doubao", api_key=doubao_key, base_url=base, model=model,
+            caps=EngineCapabilities(function_calling=False, max_context=128_000,
+                                    languages=("zh", "en"), quality=0.75, primary=True),
+            price_in=0.3, price_out=0.6,
+        ))
+
     qwen_key = env("QWEN_API_KEY")
     if qwen_key:
         engines.append(OpenAICompatibleProvider(
