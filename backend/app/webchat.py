@@ -147,8 +147,8 @@ CHAT_HTML = r"""<!DOCTYPE html>
   /* ── mobile-first responsive system ──────── */
   /* Industry standards 2025-2026: dvh, clamp(), safe-area, container queries */
   @media (max-width: 768px) {
-    /* Hide desktop-only header elements on mobile */
-    .lang-group, #consoleBtn, .conn, #keyBtn, #collapseBtn, .htxt div, .spacer {display:none!important}
+    /* Hide desktop-only header elements on mobile (keep keyBtn for logout) */
+    .lang-group, #consoleBtn, .conn, #collapseBtn, .htxt div, .spacer {display:none!important}
     /* Backdrop overlay (sibling element, not pseudo-element) */
     #backdrop{display:none;position:fixed;inset:0;z-index:48;
       background:rgba(0,0,0,.5);-webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px)}
