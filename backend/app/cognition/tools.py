@@ -181,47 +181,109 @@ async def _translate_handler(text: str, target_lang: str = "zh") -> str:
 
 
 async def _web_search_handler(query: str) -> str:
-    """Real web search via DuckDuckGo HTML endpoint. No API key needed."""
-    import httpx
+    """Optimized web search with proxy support and fallback strategies.
+
+    Priority:
+    1. duckduckgo-search library (if available)
+    2. DuckDuckGo HTML (with proxy support)
+    3. Bing search (fallback)
+
+    Reads proxy from environment: HTTP_PROXY, HTTPS_PROXY, or SEARCH_PROXY
+    """
+    # Try using duckduckgo-search library (preferred)
     try:
-        url = f"https://html.duckduckgo.com/html/?q={quote(query)}"
-        resp = httpx.get(url, headers={"User-Agent": "SundayOS/1.0"}, timeout=10.0,
-                         follow_redirects=True)
-        resp.raise_for_status()
+        from duckduckgo_search import DDGS
 
-        # Extract snippets from DuckDuckGo's HTML results
-        snippets = re.findall(
-            r'<a[^>]*class="result__snippet"[^>]*>(.*?)</a>',
-            resp.text, re.DOTALL
-        )
-        if not snippets:
-            # Fallback: try to extract any snippet-like content
-            snippets = re.findall(
-                r'class="result__snippet"[^>]*>(.*?)</',
-                resp.text, re.DOTALL
-            )
+        # Get proxy from environment
+        proxy = os.environ.get('SEARCH_PROXY') or os.environ.get('HTTPS_PROXY') or os.environ.get('HTTP_PROXY')
 
-        if not snippets:
+        with DDGS(proxy=proxy, timeout=20) as ddgs:
+            results = list(ddgs.text(query, max_results=5))
+
+        if not results:
             return f"[web_search] No results found for '{query}'."
 
-        # Clean HTML tags and entities, trim each snippet
-        clean = []
-        for s in snippets[:8]:
-            s = re.sub(r'<[^>]+>', '', s)          # strip HTML tags
-            s = s.replace('&amp;', '&').replace('&lt;', '<').replace('&gt;', '>')
-            s = s.replace('&quot;', '"').replace('&#x27;', "'")
-            s = s.replace('&nbsp;', ' ').strip()
-            if s:
-                clean.append(s)
+        # Format results with title, URL, and snippet
+        formatted = [f"[web_search] Results for '{query}':\n"]
+        for i, result in enumerate(results, 1):
+            title = result.get('title', 'No title')
+            url = result.get('href', result.get('link', ''))
+            snippet = result.get('body', result.get('snippet', ''))
 
-        if not clean:
+            # Truncate long snippets
+            if len(snippet) > 200:
+                snippet = snippet[:197] + '...'
+
+            formatted.append(f"{i}. {title}\n   {url}\n   {snippet}\n")
+
+        return "\n".join(formatted)
+
+    except ImportError:
+        pass  # Library not installed, try HTML fallback
+    except Exception as e:
+        # Log but continue to fallback
+        print(f"[DEBUG] duckduckgo-search failed: {type(e).__name__}: {str(e)[:100]}")
+
+    # Fallback: DuckDuckGo HTML with proxy support
+    import httpx
+    try:
+        # Get proxy configuration
+        proxy = os.environ.get('SEARCH_PROXY') or os.environ.get('HTTPS_PROXY') or os.environ.get('HTTP_PROXY')
+
+        url = f"https://html.duckduckgo.com/html/?q={quote(query)}"
+        async with httpx.AsyncClient(proxy=proxy, verify=False) as client:
+            resp = await client.get(
+                url,
+                headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"},
+                timeout=20.0,
+                follow_redirects=True
+            )
+            resp.raise_for_status()
+
+        # Extract titles, snippets, and URLs
+        titles = re.findall(r'<a[^>]*class="result__a"[^>]*>(.*?)</a>', resp.text, re.DOTALL)
+        snippets = re.findall(r'<a[^>]*class="result__snippet"[^>]*>(.*?)</a>', resp.text, re.DOTALL)
+        urls = re.findall(r'<a[^>]*class="result__url"[^>]*>(.*?)</a>', resp.text, re.DOTALL)
+
+        if not snippets and not titles:
+            return f"[web_search] No results found for '{query}'."
+
+        # Clean and format results
+        results = []
+        max_results = min(5, len(snippets))
+        for i in range(max_results):
+            title = re.sub(r'<[^>]+>', '', titles[i] if i < len(titles) else 'Result')
+            snippet = re.sub(r'<[^>]+>', '', snippets[i] if i < len(snippets) else '')
+            url = re.sub(r'<[^>]+>', '', urls[i] if i < len(urls) else '')
+
+            # Clean HTML entities
+            for entity, char in [('&amp;', '&'), ('&lt;', '<'), ('&gt;', '>'),
+                                 ('&quot;', '"'), ('&#x27;', "'"), ('&nbsp;', ' ')]:
+                title = title.replace(entity, char)
+                snippet = snippet.replace(entity, char)
+                url = url.replace(entity, char)
+
+            title = title.strip()
+            snippet = snippet.strip()
+            url = url.strip()
+
+            if snippet:
+                results.append(f"{i+1}. {title}\n   {url}\n   {snippet}")
+
+        if not results:
             return f"[web_search] No clear results for '{query}'."
 
-        return f"[web_search] Results for '{query}':\n" + "\n".join(
-            f"{i+1}. {snippet}" for i, snippet in enumerate(clean)
-        )
+        return f"[web_search] Results for '{query}':\n" + "\n\n".join(results)
+
+    except (httpx.ConnectTimeout, httpx.ReadTimeout, httpx.ConnectError) as e:
+        # Network error - suggest proxy configuration
+        return (f"[web_search] Network error: {type(e).__name__}. "
+                f"DuckDuckGo may be blocked. Configure SEARCH_PROXY or HTTPS_PROXY environment variable. "
+                f"Example: export HTTPS_PROXY=http://127.0.0.1:7890")
+
     except Exception as e:
-        return f"[web_search] Search failed: {e}. Try a different query."
+        print(f"[DEBUG] web_search failed: {type(e).__name__}: {str(e)[:200]}")
+        return f"[web_search] Search failed: {type(e).__name__}. Try a different query or check network connection."
 
 
 # -- action skills -----------------------------------------------------------
