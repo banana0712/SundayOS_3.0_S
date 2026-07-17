@@ -10,6 +10,41 @@
 
 ---
 
+## [0.10.4] — 2026-07-17
+
+### Added
+- **对话质量优化 - 上下文系统增强**:
+  - 话题提取返回结构化 TopicAnalysis（话题 + 连续性 + 转移程度）
+  - 对话连续性检测（is_continuation / topic_shift）
+  - 自适应检索策略（话题延续时权重 1.2x，优先近期记忆）
+  - 最近话题追踪（_get_recent_topics() 从对话历史提取）
+  - 在 belief_snapshot 显示连续性提示
+
+- **工具执行能力增强（8 → 12 个工具）**:
+  - `create_reminder` - 创建提醒事项（支持相对/绝对时间）
+  - `save_note` - 保存笔记到记忆系统（SEMANTIC）
+  - `list_notes` - 列出用户笔记（可选标签过滤）
+  - `fetch_url` - HTTP GET 请求（支持 JSON/HTML/文本）
+
+### Fixed
+- 多参数工具调用问题：
+  - 新增 `_parse_tool_args()` 函数解析逗号分隔参数
+  - 支持 `save_note[title, content]` 等多参数工具
+  - 特殊处理需要 store/user_id 注入的工具
+
+### Changed
+- 工具分类重组：
+  - data: 7 个（memory_search, get_time, web_search, read_file, weather, list_notes, fetch_url）
+  - action: 3 个（calculator, write_file, save_note）
+  - support: 1 个（translate）
+  - orchestration: 1 个（create_reminder）
+
+### Deployed
+- 所有功能已部署到生产环境并验证通过
+- 测试通过：保存笔记 ✓、列出笔记 ✓、创建提醒 ✓
+
+---
+
 ## [0.10.3] — 2026-07-17
 
 ### Added
