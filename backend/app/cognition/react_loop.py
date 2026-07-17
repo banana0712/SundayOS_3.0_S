@@ -230,6 +230,32 @@ _ACTION_RE = re.compile(r"Action:\s*(\w+)\[([^\]]*)\]")
 _OBS_RE = re.compile(r"Observation:\s*(.+?)(?=\n(?:Thought|Action):|$)", re.DOTALL)
 
 
+def _parse_tool_args(tool_input: str, param_schema: dict) -> dict:
+    """Parse tool input string into kwargs based on parameter schema.
+
+    Examples:
+        "title, content" → {"title": "title", "content": "content"}
+        "Python技巧, 用enumerate遍历" → {"title": "Python技巧", "content": "用enumerate遍历"}
+    """
+    if not tool_input or not param_schema:
+        return {}
+
+    param_names = list(param_schema.keys())
+
+    # 按逗号分割（简单实现）
+    parts = [p.strip() for p in tool_input.split(",")]
+
+    # 匹配参数名和值
+    kwargs = {}
+    for i, name in enumerate(param_names):
+        if i < len(parts):
+            kwargs[name] = parts[i]
+        else:
+            kwargs[name] = ""  # 缺失参数用空字符串
+
+    return kwargs
+
+
 
 # ---------------------------------------------------------------------------
 # ReAct loop
@@ -375,7 +401,18 @@ class ReActLoop:
                                 store=self.memory,
                                 user_id=user_id,
                             )
+                        elif tool.name in ("create_reminder", "save_note", "list_notes"):
+                            # 这些工具需要 store 和 user_id 注入
+                            kwargs = _parse_tool_args(p.tool_input or "", tool.params)
+                            kwargs["store"] = self.memory
+                            kwargs["user_id"] = user_id
+                            obs_text = await tool.handler(**kwargs)
+                        elif len(tool.params) > 1:
+                            # 多参数工具：解析参数
+                            kwargs = _parse_tool_args(p.tool_input or "", tool.params)
+                            obs_text = await tool.handler(**kwargs)
                         elif tool.params:
+                            # 单参数工具：直接传递
                             obs_text = await tool.handler(
                                 **{list(tool.params.keys())[0]: p.tool_input or ""}
                             )

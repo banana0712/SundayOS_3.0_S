@@ -70,7 +70,9 @@ def main():
     sftp = ssh.open_sftp()
 
     files_to_upload = [
-        ("backend/app/engines/router.py", f"{REMOTE_PATH}/backend/app/engines/router.py"),
+        ("backend/app/cognition/context_builder.py", f"{REMOTE_PATH}/backend/app/cognition/context_builder.py"),
+        ("backend/app/cognition/tools.py", f"{REMOTE_PATH}/backend/app/cognition/tools.py"),
+        ("backend/app/cognition/react_loop.py", f"{REMOTE_PATH}/backend/app/cognition/react_loop.py"),
         ("backend/app/main.py", f"{REMOTE_PATH}/backend/app/main.py"),
     ]
 
