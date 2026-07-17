@@ -2,7 +2,7 @@
 
 > **所有 AI Agent（Claude Code / ChatGPT / Cursor / 任何接入本项目的智能体）的唯一入口。** 开始工作前，先读本文件。不要依赖聊天历史——上下文以本文档体系为准。
 
-**版本** 3.0 · **最后更新** 2026-07-15 · **维护者** AI Software Architect
+**版本** 3.1 · **最后更新** 2026-07-17 · **维护者** AI Software Architect
 
 ---
 
@@ -106,6 +106,8 @@ SundayOS/
 | 了解”系统里有什么/谁调了谁” | **runtime.py**（80 行 Runtime + LINKAGE 图） | PROJECT_MEMORY.md §2.7 |
 | 服务器信息/部署验证 | **docs/SERVER_INFO.md**（IP/端口/访问方式） | DEPLOYMENT.md · .claude/skills/deploy.md |
 | 发现文档错误 | **docs/ERRATA.md**（记录勘误，不直接删除） | 相关源文档 |
+| 模型选择分析 | **docs/MODEL_SELECTION_ANALYSIS.md**（v0.10.9 新增） | backend/app/engines/registry.py · router.py |
+| 上下文压缩说明 | **docs/COMPRESSION_SUMMARY.md**（v0.10.8 新增） | backend/app/conversation/context_window.py |
 
 ### 文档层级关系
 

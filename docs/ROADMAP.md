@@ -2,7 +2,7 @@
 
 > 基于当前实际进度（见 [CURRENT_STATE.md](CURRENT_STATE.md)）制定的开发计划。
 
-**版本** 1.3 · **最后更新** 2026-07-17
+**版本** 1.4 · **最后更新** 2026-07-17
 
 ---
 
@@ -11,19 +11,23 @@
 | 里程碑 | 状态 | 完成度 |
 |--------|------|--------|
 | 工程文档体系 | ✅ | 10 文件 + ADR 索引 + 调试说明书 |
-| Phase 1 · 心智骨架 | ✅ | ~96% |
+| Phase 1 · 心智骨架 | ✅ | ~98% |
 | Phase 1.5 · 反馈学习系统 (ADR-012) | ✅ | 100% |
 | **Phase 1.6 · 架构重构（main.py 拆分）** | 🟡 | **50%（4/8 域完成）** |
+| **Phase 1.7 · 上下文窗口压缩** | ✅ | **100%（已部署）** |
+| **Phase 1.8 · 模型选择优化** | ✅ | **100%（已部署）** |
 | Phase 2 · 认知增强 | ⬜ | 0% |
 | Phase 3 · 体验进化 | ⬜ | 0% |
 
-### 2026-07-16 变更摘要
+### 2026-07-17 变更摘要
 
 | 模块 | 状态 | 说明 |
 |------|------|------|
+| **上下文窗口压缩 (v0.10.8)** | ✅ 100% | 超过12条自动压缩，滑动窗口保留6条+摘要<br>61.5% 压缩率，69.8% token 节省<br>已部署并验证通过 |
+| **豆包模型选择修复 (v0.10.9)** | ✅ 100% | 修正 function_calling 能力标记<br>ID 改名 sunday-chat → doubao-chat<br>使用率预期 30% → 60% |
 | main.py 域拆分 | 🟡 50% | 4/8 域完成：admin / conversations / memory / preferences<br>1360 → 1008 行（减少 352 行）<br>剩余：debug / auth / misc / chat |
 | Router 架构 | ✅ | `app/routers/` 目录 + 4 个域文件<br>`deps.py` 统一认证（单一真相源）<br>所有路由使用 `Depends(get_current_user)` |
-| 测试覆盖 | ✅ | 86 测试全部通过（1.3s） |
+| 测试覆盖 | ✅ | 89 测试全部通过（1.8s） |
 
 ### 下一步计划（v0.10.2）
 
@@ -56,7 +60,7 @@
 
 ---
 
-## Phase 1 · 心智骨架（MVP）🟡 ~85%
+## Phase 1 · 心智骨架（MVP）✅ ~98%
 
 **目标**：验证「引擎可替换 + 记忆 + 对话」核心闭环。
 
@@ -64,19 +68,20 @@
 
 | 模块 | 交付物 | 验证方式 |
 |------|--------|---------|
-| 认知引擎层 | Provider 抽象 + 4 引擎 + 动态路由 + 回退链 + 熔断 | 11 测试 + RouteTrace 可见 |
+| 认知引擎层 | Provider 抽象 + 4 引擎 + 动态路由 + 回退链 + 熔断 + **模型选择优化** | 11 测试 + RouteTrace 可见 |
 | 记忆 L1 Storage | Memory Stream + 复合评分检索 + **SQLite 持久化** + **语义 embedding（Qwen text-embedding-v3）+ 启动自动重嵌入** | 24 测试 + API 可调用 |
 | 记忆 L2 Reflection | 反思引擎（Generative Agents 两步流程） | 自动触发 + 手动 API + 测试 |
 | LLM 重要性打分 | Generative Agents 论文 1-10 自动评分 | chat 端点内联，异步非阻塞 |
 | 双系统判据 | needs_reasoner() + risk_level() + BeliefState 数据模型 | 6 测试 |
 | **ReAct 循环** | Thought→Action→Observation + 4 工具 + 护栏门控 | 9 测试 + react_steps 轨迹 |
 | **SSE 流式** | `/api/chat/stream` + webchat + console 双前端消费 | 浏览器可见逐字/逐步输出 |
+| **上下文窗口压缩** | 超过12条自动压缩，滑动窗口保留6条+摘要 | 61.5% 压缩率，5/5 验证通过 |
 | 护栏基础 | L2-L4 规则（注入/越狱/长度）+ L3 PII 脱敏 + L5 工具风险 | 4 测试 |
 | Chat UI | 双栏布局（会话侧边栏 + 聊天区）+ 4 视图切换 | 浏览器打开即用 |
 | Console | Dashboard 实时数据 + Brain + Memory Center + Chat 流式 | 前端构建通过 |
 | 会话管理 | ConversationStore + 6 端点 + **SQLite 持久化（跨重启存活）** + webchat/console 侧边栏 | 16 测试 |
 | 调试体系 | `/api/debug/overview` + Swagger UI + 调试面板 + DEBUGGING.md | 文档 + API |
-| 部署 | Railway 一键部署 | 已配置 |
+| 部署 | Railway 一键部署 + 自动部署脚本 | 已配置 |
 
 ### 待完成（仅剩 2 项）
 
@@ -84,20 +89,6 @@
 |---|------|--------|------|
 | 1 | web_search 真实实现 | 小（1h） | 当前是占位符，需接搜索 API Key |
 | 2 | Ollama 本地引擎验证 | 小（1h） | Provider 已定义，需验证 + 文档 |
-| 诊断工具 | `/api/debug/env` + RouteTrace errors 字段 | API 可调用 |
-| 部署 | Railway 一键部署 | 已配置 |
-
-### 待完成（按优先级排序）
-
-#### 🔴 P0 — 记忆持久化（SQLite + ChromaDB）
-- **为什么优先**：记忆仅内存，重启即失——这是"身份连续性"的前提。没有它，Sunday 就是无记忆的聊天机器人。
-- **工作量**：中（3-5h）
-- **依赖**：无阻塞依赖。MemoryStore 已有清晰接口，只需实现 SQLite 子类 + ChromaDB 向量存储。
-- **验收**：重启后端后记忆仍在；1000+ 条记忆检索 < 200ms。
-- **对应 ADR**：[ADR-010](3.0/adr/010-local-first-storage.md)
-
-#### 🔴 P0 — Reasoner 的 ReAct 循环 + 真实工具执行
-- **为什么优先**：系统2 目前只是"路由到强引擎直接回答"，Sunday 还不是 Agent。ReAct 是实现"能做事"的前提。
 - **工作量**：大（6-10h）
 - **依赖**：记忆持久化（更优体验，非硬依赖）
 - **子任务**：
