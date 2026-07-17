@@ -70,7 +70,7 @@ def main():
     sftp = ssh.open_sftp()
 
     files_to_upload = [
-        ("backend/app/routers/logs.py", f"{REMOTE_PATH}/backend/app/routers/logs.py"),
+        ("backend/app/engines/router.py", f"{REMOTE_PATH}/backend/app/engines/router.py"),
         ("backend/app/main.py", f"{REMOTE_PATH}/backend/app/main.py"),
     ]
 
