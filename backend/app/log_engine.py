@@ -92,8 +92,19 @@ def _emit(level: str, category: str, log_type: str = "engine", **fields) -> None
         "cat": category,
         **fields,
     }
-    line = json.dumps(record, ensure_ascii=False, default=str)
-    print(f"[{record['ts']}] [{level}] [{category}]", json.dumps(fields, ensure_ascii=False, default=str))
+
+    # 文件日志：尝试 UTF-8，失败则用 ASCII
+    try:
+        line = json.dumps(record, ensure_ascii=False, default=str)
+    except (UnicodeEncodeError, UnicodeDecodeError):
+        line = json.dumps(record, ensure_ascii=True, default=str)
+
+    # Console 输出：Windows 编码问题，静默失败
+    try:
+        console_output = json.dumps(fields, ensure_ascii=True, default=str)
+        print(f"[{record['ts']}] [{level}] [{category}]", console_output)
+    except Exception:
+        pass  # 完全静默失败，至少保证文件日志正常
 
     # 写入对应的日志文件
     if log_type == "interaction":

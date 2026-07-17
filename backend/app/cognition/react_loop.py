@@ -124,14 +124,16 @@ _SKILL_DOCS: dict[str, str] = {
         "  **何时使用**：用户说「提醒我」「记得」「别忘了」\n"
         "  **不要使用**：用户只是说要做某事但没要求提醒 → 用 memory_search 记录即可\n"
         "  **示例**：`create_reminder[开会, 明天9点]`、`create_reminder[吃药, 3小时后]`\n"
-        "  **注意**：when 支持相对时间（明天/今天/X小时后）或绝对时间。提醒保存到记忆系统。"
+        "  **注意**：when 支持相对时间（明天/今天/X小时后）或绝对时间。提醒保存到记忆系统。\n"
+        "  **⚠️ 强制执行**：必须调用此工具完成持久化，禁止直接回答「已创建」。"
     ),
     "save_note": (
         "`save_note[title, content]` — 保存笔记到记忆系统。\n"
         "  **何时使用**：用户说「记下来」「做个笔记」「保存这个想法」\n"
         "  **不要使用**：用户只是聊天 → 不需要笔记；要保存到文件 → 用 write_file\n"
         "  **示例**：`save_note[Python技巧, 用enumerate遍历索引和值]`\n"
-        "  **注意**：笔记保存为语义记忆，可通过 memory_search 或 list_notes 检索。"
+        "  **注意**：笔记保存为语义记忆，可通过 memory_search 或 list_notes 检索。\n"
+        "  **⚠️ 强制执行**：必须调用此工具完成持久化，禁止直接回答「已保存」。"
     ),
     "list_notes": (
         "`list_notes[tag]` — 列出用户保存的笔记。\n"
@@ -303,8 +305,16 @@ class ReActLoop:
             "3. `Action:` 格式：`Action: 工具名[参数]` 或 `Action: finish[最终回答]`。\n"
             "4. 不要编造 Observation——只有系统才能返回 Observation。\n"
             "5. 每次一个 Thought + 一个 Action，不要一次性输出多步。\n"
-            "6. **判断是否需要工具**：普通聊天、问候、情感交流 → 直接用 finish 回复。\n"
-            "   需要计算/搜索/查时间/读文件/翻译/查天气 → 先调用对应工具。\n\n"
+            "6. **强制工具调用场景**（必须调用工具，禁止直接回答）：\n"
+            "   - 持久化操作：保存笔记(save_note)、创建提醒(create_reminder)、列出笔记(list_notes)\n"
+            "   - 文件操作：读文件(read_file)、写文件(write_file)\n"
+            "   - 外部数据：查天气(get_weather)、查时间(get_time)、网页获取(fetch_url)、搜索(web_search)\n"
+            "   - 计算任务：复杂计算(calculator)\n"
+            "7. **可直接回答**：普通聊天、问候、情感交流、基于已知知识的解释说明。\n\n"
+            "## ⚠️ 重要：不要模拟工具执行结果\n"
+            "当用户要求「记笔记」「创建提醒」「查天气」「读文件」时：\n"
+            "- ❌ 错误：直接回答「已保存笔记」「已创建提醒」（数据未持久化）\n"
+            "- ✅ 正确：`Action: save_note[标题, 内容]` 等待 Observation，再基于实际结果回复\n\n"
             "## 技能目录\n{skills}\n\n"
             "## 示例\n{fewshot}"
         )

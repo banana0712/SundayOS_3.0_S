@@ -1,73 +1,92 @@
 #!/bin/bash
-# 自动部署脚本（含密码）
+# SundayOS 一键自动部署脚本（无需交互）
+
+set -e
 
 SERVER="45.207.220.124"
 USER="root"
-PASSWORD="FvzHPk2crcQ6"
-REPO_PATH="/opt/sundayos"
+REMOTE_PATH="/opt/sundayos"
+PASSWORD_FILE="$HOME/.sundayos_deploy_password"
 
-echo "=== Sunday OS 自动部署 ==="
+# 颜色输出
+GREEN='\033[0;32m'
+RED='\033[0;31m'
+NC='\033[0m'
+
+echo "=== SundayOS 自动部署 ==="
+
+# 检查密码文件
+if [ ! -f "$PASSWORD_FILE" ]; then
+    echo "首次使用，请输入服务器密码（只需输入一次）："
+    read -s password
+    echo "$password" > "$PASSWORD_FILE"
+    chmod 600 "$PASSWORD_FILE"
+    echo -e "${GREEN}✓ 密码已保存${NC}"
+fi
+
+PASSWORD=$(cat "$PASSWORD_FILE")
+
+# 1. 上传修改的文件
 echo ""
+echo "1. 上传文件到服务器..."
 
-# 使用 SSH 执行远程命令
-# 注意：这种方式会在命令历史中暴露密码，仅用于临时部署
-cat > /tmp/deploy_commands.sh << 'ENDSSH'
-cd /opt/sundayos
+# 使用 sftp 批量上传
+cat > /tmp/sftp_commands << SFTP_EOF
+put backend/app/routers/logs.py $REMOTE_PATH/backend/app/routers/logs.py
+put backend/app/main.py $REMOTE_PATH/backend/app/main.py
+bye
+SFTP_EOF
 
-echo ">>> 1. 检查当前状态..."
-git status --short | head -20
+expect << EXPECT_EOF
+set timeout 30
+spawn sftp -b /tmp/sftp_commands $USER@$SERVER
+expect {
+    "password:" {
+        send "$PASSWORD\r"
+        exp_continue
+    }
+    eof
+}
+EXPECT_EOF
+
+rm /tmp/sftp_commands
+
+echo -e "${GREEN}✓ 文件上传完成${NC}"
+
+# 2. 重启服务
+echo ""
+echo "2. 重启服务..."
+
+expect << EXPECT_EOF
+set timeout 10
+spawn ssh $USER@$SERVER "systemctl restart sunday.service"
+expect {
+    "password:" {
+        send "$PASSWORD\r"
+        exp_continue
+    }
+    eof
+}
+EXPECT_EOF
+
+echo -e "${GREEN}✓ 服务已重启${NC}"
+
+# 3. 检查状态
+echo ""
+echo "3. 检查服务状态..."
+
+expect << EXPECT_EOF
+set timeout 10
+spawn ssh $USER@$SERVER "systemctl status sunday.service --no-pager -l | head -15"
+expect {
+    "password:" {
+        send "$PASSWORD\r"
+        exp_continue
+    }
+    eof
+}
+EXPECT_EOF
 
 echo ""
-echo ">>> 2. 拉取最新代码..."
-git fetch origin
-git reset --hard origin/main
-
-echo ""
-echo ">>> 3. 添加并提交本地改动..."
-git add -A
-git commit -m "deploy: v0.10.0 with deployment automation
-
-- GitHub Actions auto-deploy workflow
-- Multiple deployment scripts
-- Comprehensive deployment documentation
-
-Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>" || echo "No new changes to commit"
-
-echo ""
-echo ">>> 4. 推送到 GitHub..."
-git push origin main
-
-echo ""
-echo ">>> 5. 更新依赖..."
-source .venv/bin/activate
-pip install -q -r backend/requirements.txt
-
-echo ""
-echo ">>> 6. 重启服务..."
-systemctl restart sunday.service
-
-echo ""
-echo ">>> 7. 等待服务启动..."
-sleep 3
-
-echo ""
-echo ">>> 8. 检查服务状态..."
-systemctl status sunday.service --no-pager -l | head -20
-
-echo ""
-echo ">>> 9. 验证健康端点..."
-curl -s http://localhost:8005/health | python3 -m json.tool
-
-echo ""
-echo "=== 部署完成 ==="
-ENDSSH
-
-# 使用 SSH 传输并执行
-scp /tmp/deploy_commands.sh ${USER}@${SERVER}:/tmp/
-ssh ${USER}@${SERVER} 'bash /tmp/deploy_commands.sh'
-
-echo ""
-echo "✅ 所有步骤完成！"
-echo ""
-echo "外网验证:"
-curl -s http://45.207.220.124:8005/health | python3 -m json.tool
+echo -e "${GREEN}=== 部署完成 ===${NC}"
+echo "API 地址: http://45.207.220.124:8005"
