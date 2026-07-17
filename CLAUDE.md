@@ -96,7 +96,10 @@ npm run build    # 类型 + lint 检查
 
 ## 工程约定
 
-- **语言**：文档与注释用中文（与既有一致）；代码标识符用英文。
+- **语言**：
+  - 文档、注释、所有输出内容均用**中文**（与既有一致）
+  - 代码标识符用英文
+  - **与开发者的所有对话、报告、验证结果必须用中文**——包括 `/verify`、`/checkup` 等技能的输出
 - **后端**：Python 3.11+，类型注解齐全，纯逻辑与 I/O 分离（便于离线单测）。新增引擎 = 写 `EngineProvider` 子类 + 在 `registry.py` 登记，**零改上层**。
 - **前端**：TS + Tailwind + Framer Motion，遵循 [DESIGN_SYSTEM.md](docs/DESIGN_SYSTEM.md) 的 token。
 - **测试**：改动核心逻辑（路由/记忆/双系统/护栏）必须补/跑 `pytest`。提交前后端跑 `pytest`、前端跑 `npm run build`。

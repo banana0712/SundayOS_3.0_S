@@ -12,6 +12,10 @@ os.environ['NO_PROXY'] = '*'
 os.environ['no_proxy'] = '*'
 
 from dotenv import load_dotenv
+
+# Load .env file
+load_dotenv(override=True)
+
 from fastapi import FastAPI, Header, HTTPException, Path as FastAPIPath
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, StreamingResponse, FileResponse, Response
@@ -705,15 +709,46 @@ async def engines() -> dict:
 async def chat(req: ChatRequest, x_api_key: str | None = Header(default=None), x_sunday_token: str | None = Header(default=None, alias="X-Sunday-Token")) -> dict:
     user_id = _auth(x_api_key, x_sunday_token)
 
+    # 生成 request_id 用于追踪整个交互流程
+    import uuid
+    request_id = f"req_{uuid.uuid4().hex[:12]}"
+    session_id = req.conversation_id or "new_session"
+
+    # 记录交互开始
+    log.interaction_start(
+        session_id=session_id,
+        user_id=user_id,
+        request_id=request_id,
+        user_message=req.message,
+        conversation_id=req.conversation_id,
+        metadata={"role_hint": req.role_hint}
+    )
+
     # L6 input guardrails
     try:
         check_input(req.message)
+        log.guardrail_check(request_id, "input", True, "all checks passed")
     except GuardrailTripwire as t:
+        log.guardrail_check(request_id, "input", False, f"{t.layer}:{t.reason}")
         raise HTTPException(status_code=400, detail=f"guardrail:{t.layer}:{t.reason}")
 
     # Build topic-aware cross-session context (Engram/GAM/APEX-MEM)
     assembled = await build_context(req.message, user_id, MEMORY, ROUTER)
     context_block = assembled.to_prompt_section() if assembled else ""
+
+    # 记录上下文检索
+    if assembled:
+        memory_nodes = [
+            {"id": node.id, "content": node.content, "importance": node.importance}
+            for node in (assembled.nodes or [])[:5]  # 最多记录5个
+        ]
+        conversation_history = []  # 如果需要可以从 CONV 获取
+        log.context_retrieved(
+            request_id=request_id,
+            memory_nodes=memory_nodes,
+            conversation_history=conversation_history,
+            retrieved_count=len(assembled.nodes or [])
+        )
 
     # Empathy: UU analysis → IRG guidance
     empathy_snapshot, empathy_guidance = await run_empathy_pipeline(
@@ -865,10 +900,31 @@ async def chat(req: ChatRequest, x_api_key: str | None = Header(default=None), x
         source="voice_capsule" if req.voice_input else "chat",
     ))
 
+    # 记录记忆写入
+    log.memory_write(
+        request_id=request_id,
+        node_id=f"mem_{uuid.uuid4().hex[:8]}",
+        node_type="episodic",
+        content_preview=f"用户说：{req.message}",
+        importance=importance
+    )
+
     # -- auto-trigger reflection if importance threshold crossed ---
     runtime.session_importance[user_id] = runtime.session_importance.get(user_id, 0) + importance
     schedule_reflection(MEMORY, user_id, ROUTER,
                         session_importance=runtime.session_importance[user_id])
+
+    # 记录交互完成
+    log.interaction_complete(
+        request_id=request_id,
+        user_id=user_id,
+        system_response=reply,
+        total_latency_ms=trace.get("latency_ms", 0),
+        tokens_used=trace.get("usage", {}).get("prompt_tokens", 0) + trace.get("usage", {}).get("completion_tokens", 0),
+        cost_usd=trace.get("usage", {}).get("cost_usd", 0),
+        engine_used=chosen_engine,
+        success=True
+    )
 
     return {
         "reply": reply,

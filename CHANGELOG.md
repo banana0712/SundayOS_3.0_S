@@ -10,6 +10,26 @@
 
 ---
 
+## [0.10.2] — 2026-07-17
+
+### Added
+- **前端应用**: 新增 Next.js 15 前端目录 (`frontend/`)
+  - 完整的聊天界面组件 (`components/chat-interface.tsx`)
+  - 主题编辑器 (`components/theme-editor.tsx`)
+  - 全局样式和布局 (`app/globals.css`, `app/layout.tsx`)
+  - 主题上下文管理 (`lib/theme-context.tsx`)
+  - 设计文档集（DESIGN_FIXES.md, FINAL_DESIGN_REPORT.md 等）
+- **Claude Code 健康检查**: 运行 `/doctor` 诊断并启用 auto mode 作为默认权限模式
+
+### Changed
+- 用户设置：在 `~/.claude/settings.json` 中启用 `permissions.defaultMode: "auto"`，减少权限提示中断
+
+### Deployed
+- 成功部署到生产服务器（45.207.220.124）
+- 服务状态：健康运行中，版本 0.10.1
+
+---
+
 ## [0.10.1] — 2026-07-16
 
 ### Changed

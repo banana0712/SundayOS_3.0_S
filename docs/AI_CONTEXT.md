@@ -39,6 +39,8 @@ SundayOS/
 │   ├── ROADMAP.md             #   开发路线图
 │   ├── DESIGN_SYSTEM.md       #   设计规范与改进建议
 │   ├── PROJECT_MEMORY.md      #   已完成的重大设计决策
+│   ├── SERVER_INFO.md         #   ★ 生产服务器详细信息（小兔云香港）
+│   ├── ERRATA.md              #   ★ 文档勘误表（不删除错误，标记修正）
 │   ├── adr/                   #   架构决策记录（12 ADR：001-012）
 │   ├── guides/                #   使用与操作手册（6 份）
 │   └── 3.0/                   #   实现级技术规范（13 文档）
@@ -97,9 +99,13 @@ SundayOS/
 | Dashboard 接真数据（去 mock） | **docs/guides/DASHBOARD_REAL_DATA_PLAN.md**（交接计划，按卡片分级 + file:line） | console/src/components/views/dashboard.tsx |
 | 继续拆分 main.py | **docs/guides/MAIN_SPLIT_PLAN.md**（模式已定，地基+admin 已完成，按域顺序滚） | app/deps.py · app/routers/admin.py（范例） |
 | 调试/排错 | **docs/guides/DEBUGGING.md**（第一个看这个） | /health · /api/debug/env · /docs |
+| 设计交互日志系统 | **docs/guides/INTERACTION_LOG_DESIGN.md**（完整用户交互记录方案） | backend/app/log_engine.py |
+| 实现四人格系统 | **docs/guides/FOUR_PERSONA_SYSTEM.md**（Sun + Luna + Momo + Iris） | backend/app/persona/variants/ |
 | 安全审查 | ARCHITECTURE.md §6 · PROJECT_MEMORY.md §4 | docs/3.0/08-security-and-autonomy.md |
 | 新成员入职 | 本文件 → CURRENT_STATE.md → ARCHITECTURE.md | SUNDAY_CONTEXT.md（理解理念） |
-| 了解“系统里有什么/谁调了谁” | **runtime.py**（80 行 Runtime + LINKAGE 图） | PROJECT_MEMORY.md §2.7 |
+| 了解”系统里有什么/谁调了谁” | **runtime.py**（80 行 Runtime + LINKAGE 图） | PROJECT_MEMORY.md §2.7 |
+| 服务器信息/部署验证 | **docs/SERVER_INFO.md**（IP/端口/访问方式） | DEPLOYMENT.md · .claude/skills/deploy.md |
+| 发现文档错误 | **docs/ERRATA.md**（记录勘误，不直接删除） | 相关源文档 |
 
 ### 文档层级关系
 
@@ -135,6 +141,8 @@ AI_CONTEXT.md （唯一入口）
 | 重大决策 | PROJECT_MEMORY.md + 新增 ADR |
 | 设计规范变化 | DESIGN_SYSTEM.md + globals.css + tailwind.config.ts |
 | 新增关键依赖/文件 | CURRENT_STATE.md §2（文件清单） |
+| 服务器状态/版本 | SERVER_INFO.md（历史记录表） |
+| 发现文档错误 | ERRATA.md（勘误记录） + 修正源文档 |
 
 ## 5. 术语速查
 
