@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json as _json
+import logging
 import uuid
 from typing import TYPE_CHECKING
 
@@ -11,7 +12,6 @@ from pydantic import BaseModel
 
 from ..deps import get_current_user, ctx
 from ..log_engine import log
-from .. import runtime
 from ..engines.base import EngineMessage, Complexity
 from ..engines.router import CognitiveRequest
 from ..memory.schema import MemoryNode, MemoryType
@@ -26,6 +26,8 @@ from ..persona import build_prompt_with_prefs
 from ..persona.empathy import run_empathy_pipeline
 from ..guardrails.pipeline import check_input, GuardrailTripwire
 from ..guardrails.pii import redact_pii
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from ..deps import _Context
@@ -74,12 +76,17 @@ def _get_recent_topics(conv_id: str, limit: int = 3) -> list[str]:
 def _record_stats(engine_id: str | None, latency_ms: float,
                   prompt_tokens: int, completion_tokens: int, cost_usd: float,
                   event: str = "") -> None:
-    runtime.record_call(engine_id, latency_ms, prompt_tokens, completion_tokens, cost_usd, event)
+    ctx.runtime.record_call(engine_id, latency_ms, prompt_tokens, completion_tokens, cost_usd, event)
 
 
 @router.post("")
 async def chat(req: ChatRequest, user_id: str = Depends(get_current_user)) -> dict:
     """Main chat endpoint — non-streaming."""
+
+    # Debug: write to file
+    with open("/tmp/sunday_debug.log", "a") as f:
+        f.write(f"[CHAT_ENTRY] message={req.message[:50]}, conv_id={req.conversation_id}\n")
+    print(f"[CHAT_ENTRY] Received message: {req.message[:50]}, conv_id: {req.conversation_id}", flush=True)
 
     # 生成 request_id 用于追踪整个交互流程
     request_id = f"req_{uuid.uuid4().hex[:12]}"
@@ -108,37 +115,12 @@ async def chat(req: ChatRequest, user_id: str = Depends(get_current_user)) -> di
     assembled = await build_context(req.message, user_id, ctx.memory, ctx.router, recent_topics=recent_topics)
     context_block = assembled.to_prompt_section() if assembled else ""
 
-    # Apply context window management for long conversations
+    # Get conversation history (may already be compressed from previous turns)
     conversation_messages = []
     if req.conversation_id:
         conv = ctx.conversations.get(req.conversation_id)
         if conv and conv.messages:
-            try:
-                # Manage context window: compress if needed
-                window = await manage_context_window(
-                    conversation_id=req.conversation_id,
-                    messages=conv.messages,
-                    router=ctx.router,
-                    memory_store=ctx.memory,
-                    user_id=user_id,
-                )
-                # Build final message list with compression summary
-                conversation_messages = build_context_with_window(window)
-
-                # Log compression if occurred
-                if window.summary:
-                    log.context_retrieved(
-                        request_id=request_id,
-                        memory_nodes=[],
-                        conversation_history=conversation_messages,
-                        retrieved_count=len(conversation_messages)
-                    )
-            except Exception as e:
-                import logging
-                logger = logging.getLogger(__name__)
-                logger.error(f"[ERROR] Context window management failed: {e}", exc_info=True)
-                # Continue without compression on error
-                conversation_messages = []
+            conversation_messages = conv.messages
 
     # 记录上下文检索
     if assembled:
@@ -154,12 +136,21 @@ async def chat(req: ChatRequest, user_id: str = Depends(get_current_user)) -> di
         req.message, ctx.router,
     )
 
+    # Check for conversation history summary
+    conv_summary = None
+    if req.conversation_id:
+        conv = ctx.conversations.get(req.conversation_id)
+        if conv and hasattr(conv, 'summary') and conv.summary:
+            conv_summary = conv.summary
+
     # Dispatch: System 1 vs System 2
     belief = BeliefState(user_id=user_id)
     use_reasoner = needs_reasoner(req.role_hint or "chat", req.message, belief)
     complexity = Complexity.L3_DEEP if use_reasoner else Complexity.L2_DAILY
 
     system_prompt = build_prompt_with_prefs(user_id, ctx.pref_store)
+    if conv_summary:
+        system_prompt += f"\n\n[对话历史摘要]\n{conv_summary}"
     if empathy_guidance:
         system_prompt += f"\n\n[当前互动]\n{empathy_guidance}"
     if context_block:
@@ -280,6 +271,11 @@ async def chat(req: ChatRequest, user_id: str = Depends(get_current_user)) -> di
     if not conv_id or not ctx.conversations.get(conv_id):
         conv = ctx.conversations.create(user_id)
         conv_id = conv.id
+
+    print(f"[BEFORE ADD] conv_id={conv_id}, msg_count={len(ctx.conversations.get(conv_id).messages)}", flush=True)
+    with open("/tmp/sunday_debug.log", "a") as f:
+        f.write(f"[BEFORE] {conv_id} {len(ctx.conversations.get(conv_id).messages)}\n")
+
     ctx.conversations.add_message(conv_id, "user", req.message)
     ctx.conversations.add_message(conv_id, "assistant", reply,
                      engine=chosen_engine,
@@ -292,6 +288,42 @@ async def chat(req: ChatRequest, user_id: str = Depends(get_current_user)) -> di
                          "latency_ms": trace.get("latency_ms", 0),
                          "react_steps": react_steps,
                      })
+
+    print(f"[AFTER ADD] conv_id={conv_id}, msg_count={len(ctx.conversations.get(conv_id).messages)}", flush=True)
+    with open("/tmp/sunday_debug.log", "a") as f:
+        f.write(f"[AFTER] {conv_id} {len(ctx.conversations.get(conv_id).messages)}\n")
+
+    # Apply context window management after adding new messages
+    conv = ctx.conversations.get(conv_id)
+    msg_count = len(conv.messages) if conv else 0
+    print(f"[COMPRESSION_CHECK] conv_id={conv_id}, messages={msg_count}, threshold=12", flush=True)
+    logger.info(f"[COMPRESSION_CHECK] conv_id={conv_id}, messages={msg_count}, threshold=12")
+    with open("/tmp/sunday_debug.log", "a") as f:
+        f.write(f"[CHECK] {conv_id} {msg_count}\n")
+
+    if conv and msg_count > 12:  # COMPRESSION_THRESHOLD
+        try:
+            logger.info(f"[COMPRESSION_TRIGGER] Starting compression for {conv_id} with {msg_count} messages")
+            from ..cognition.context_window import manage_context_window
+            window = await manage_context_window(
+                conversation_id=conv_id,
+                messages=conv.messages,
+                router=ctx.router,
+                memory_store=ctx.memory,
+                user_id=user_id,
+            )
+            # Update conversation with compressed messages
+            if window.summary:
+                conv.messages = window.messages
+                conv.summary = window.summary  # Store summary for next interaction
+                # Persist to database if using SQLite store
+                if hasattr(ctx.conversations, '_persist'):
+                    ctx.conversations._persist(conv)
+                logger.info(f"[COMPRESSION_APPLIED] Conversation {conv_id}: {len(window.messages)} messages kept, summary length: {len(window.summary)}")
+            else:
+                logger.info(f"[COMPRESSION_SKIPPED] No summary generated for {conv_id}")
+        except Exception as e:
+            logger.error(f"[COMPRESSION_ERROR] Failed for {conv_id}: {e}", exc_info=True)
 
     # Memory write with LLM importance scoring (async, non-blocking)
     try:
@@ -325,9 +357,9 @@ async def chat(req: ChatRequest, user_id: str = Depends(get_current_user)) -> di
     )
 
     # -- auto-trigger reflection if importance threshold crossed ---
-    runtime.session_importance[user_id] = runtime.session_importance.get(user_id, 0) + importance
+    ctx.runtime.session_importance[user_id] = ctx.runtime.session_importance.get(user_id, 0) + importance
     schedule_reflection(ctx.memory, user_id, ctx.router,
-                        session_importance=runtime.session_importance[user_id])
+                        session_importance=ctx.runtime.session_importance[user_id])
 
     # 记录交互完成
     log.interaction_complete(

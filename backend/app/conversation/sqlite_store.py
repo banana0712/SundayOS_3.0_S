@@ -46,6 +46,7 @@ class SQLiteConversationStore(ConversationStore):
                 user_id     TEXT NOT NULL,
                 title       TEXT NOT NULL DEFAULT '新对话',
                 messages    TEXT NOT NULL DEFAULT '[]',  -- JSON array of msg dicts
+                summary     TEXT,                         -- Compressed history summary
                 created_at  TEXT NOT NULL,               -- ISO 8601
                 updated_at  TEXT NOT NULL                -- ISO 8601
             )
@@ -54,18 +55,25 @@ class SQLiteConversationStore(ConversationStore):
             CREATE INDEX IF NOT EXISTS idx_conv_user
                 ON conversations(user_id, updated_at DESC)
         """)
+        # Add summary column if it doesn't exist (for existing databases)
+        try:
+            self._conn.execute("ALTER TABLE conversations ADD COLUMN summary TEXT")
+            self._conn.commit()
+        except Exception:
+            pass  # Column already exists
         self._conn.commit()
 
     # -- row <-> dataclass ----------------------------------------------------
 
     @staticmethod
     def _row_to_conv(row: tuple) -> Conversation:
-        id_, user_id, title, messages_json, created_at, updated_at = row
+        id_, user_id, title, messages_json, summary, created_at, updated_at = row
         return Conversation(
             id=id_,
             user_id=user_id,
             title=title,
             messages=json.loads(messages_json) if messages_json else [],
+            summary=summary,
             created_at=_ensure_utc(datetime.fromisoformat(created_at)),
             updated_at=_ensure_utc(datetime.fromisoformat(updated_at)),
         )
@@ -73,10 +81,11 @@ class SQLiteConversationStore(ConversationStore):
     def _persist(self, conv: Conversation) -> None:
         self._conn.execute(
             """INSERT OR REPLACE INTO conversations
-               (id, user_id, title, messages, created_at, updated_at)
-               VALUES (?,?,?,?,?,?)""",
+               (id, user_id, title, messages, summary, created_at, updated_at)
+               VALUES (?,?,?,?,?,?,?)""",
             (conv.id, conv.user_id, conv.title,
              json.dumps(conv.messages, ensure_ascii=False),
+             conv.summary,
              conv.created_at.isoformat(), conv.updated_at.isoformat()),
         )
         self._conn.commit()
@@ -91,7 +100,7 @@ class SQLiteConversationStore(ConversationStore):
     def list(self, user_id: str) -> list[Conversation]:
         """Return all conversations for a user, newest first."""
         rows = self._conn.execute(
-            """SELECT id, user_id, title, messages, created_at, updated_at
+            """SELECT id, user_id, title, messages, summary, created_at, updated_at
                FROM conversations WHERE user_id = ?
                ORDER BY updated_at DESC""",
             (user_id,),
@@ -100,7 +109,7 @@ class SQLiteConversationStore(ConversationStore):
 
     def get(self, conv_id: str) -> Conversation | None:
         row = self._conn.execute(
-            """SELECT id, user_id, title, messages, created_at, updated_at
+            """SELECT id, user_id, title, messages, summary, created_at, updated_at
                FROM conversations WHERE id = ?""",
             (conv_id,),
         ).fetchone()

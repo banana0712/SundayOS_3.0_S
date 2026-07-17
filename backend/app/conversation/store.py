@@ -24,6 +24,7 @@ class Conversation:
     user_id: str = ""
     title: str = "新对话"
     messages: list[dict] = field(default_factory=list)
+    summary: str | None = None  # Compressed history summary
     created_at: datetime = field(default_factory=_now)
     updated_at: datetime = field(default_factory=_now)
 

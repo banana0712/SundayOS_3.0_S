@@ -15,7 +15,8 @@ from __future__ import annotations
 
 import json
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -35,6 +36,120 @@ TARGET_SUMMARY_TOKENS = 300    # Target token count for compressed history
 # ── Data Structures ────────────────────────────────────────────────────────────
 
 @dataclass
+class CompressionMetrics:
+    """Detailed metrics for a compression operation."""
+    timestamp: datetime
+    conversation_id: str
+    original_message_count: int
+    compressed_message_count: int
+    kept_message_count: int
+    compression_ratio: float
+    summary_length: int
+    facts_extracted_count: int
+    compression_time_ms: float
+    token_estimate_before: int
+    token_estimate_after: int
+    quality_score: float = 0.0  # Future: LLM-based quality assessment
+
+    def to_dict(self) -> dict:
+        """Convert to dictionary for JSON serialization."""
+        return {
+            "timestamp": self.timestamp.isoformat(),
+            "conversation_id": self.conversation_id,
+            "original_message_count": self.original_message_count,
+            "compressed_message_count": self.compressed_message_count,
+            "kept_message_count": self.kept_message_count,
+            "compression_ratio": round(self.compression_ratio, 2),
+            "summary_length": self.summary_length,
+            "facts_extracted_count": self.facts_extracted_count,
+            "compression_time_ms": round(self.compression_time_ms, 2),
+            "token_estimate_before": self.token_estimate_before,
+            "token_estimate_after": self.token_estimate_after,
+            "token_savings": self.token_estimate_before - self.token_estimate_after,
+            "token_savings_percent": round(
+                (1 - self.token_estimate_after / max(self.token_estimate_before, 1)) * 100, 1
+            ),
+            "quality_score": self.quality_score,
+        }
+
+
+@dataclass
+class CompressionHistory:
+    """Historical record of compressions for a conversation."""
+    conversation_id: str
+    compressions: list[CompressionMetrics] = field(default_factory=list)
+
+    def add(self, metrics: CompressionMetrics):
+        """Add a compression record."""
+        self.compressions.append(metrics)
+
+    def get_stats(self) -> dict:
+        """Get aggregate statistics."""
+        if not self.compressions:
+            return {
+                "total_compressions": 0,
+                "avg_compression_ratio": 0.0,
+                "avg_time_ms": 0.0,
+                "total_facts_extracted": 0,
+            }
+
+        return {
+            "total_compressions": len(self.compressions),
+            "avg_compression_ratio": sum(c.compression_ratio for c in self.compressions) / len(self.compressions),
+            "avg_time_ms": sum(c.compression_time_ms for c in self.compressions) / len(self.compressions),
+            "total_facts_extracted": sum(c.facts_extracted_count for c in self.compressions),
+            "total_messages_compressed": sum(c.compressed_message_count for c in self.compressions),
+            "avg_token_savings_percent": sum(
+                (1 - c.token_estimate_after / max(c.token_estimate_before, 1)) * 100
+                for c in self.compressions
+            ) / len(self.compressions),
+        }
+
+    def to_dict(self) -> dict:
+        """Convert to dictionary for JSON serialization."""
+        return {
+            "conversation_id": self.conversation_id,
+            "stats": self.get_stats(),
+            "history": [c.to_dict() for c in self.compressions[-10:]],  # Last 10
+        }
+
+
+# Global compression history store (in-memory, per session)
+_compression_history: dict[str, CompressionHistory] = {}
+
+
+def get_compression_history(conversation_id: str) -> CompressionHistory:
+    """Get or create compression history for a conversation."""
+    if conversation_id not in _compression_history:
+        _compression_history[conversation_id] = CompressionHistory(conversation_id)
+    return _compression_history[conversation_id]
+
+
+def get_all_compression_stats() -> dict:
+    """Get aggregate stats across all conversations."""
+    all_compressions = []
+    for history in _compression_history.values():
+        all_compressions.extend(history.compressions)
+
+    if not all_compressions:
+        return {
+            "total_conversations_compressed": 0,
+            "total_compressions": 0,
+            "avg_compression_ratio": 0.0,
+            "total_facts_extracted": 0,
+        }
+
+    return {
+        "total_conversations_compressed": len(_compression_history),
+        "total_compressions": len(all_compressions),
+        "avg_compression_ratio": sum(c.compression_ratio for c in all_compressions) / len(all_compressions),
+        "avg_time_ms": sum(c.compression_time_ms for c in all_compressions) / len(all_compressions),
+        "total_facts_extracted": sum(c.facts_extracted_count for c in all_compressions),
+        "total_messages_compressed": sum(c.compressed_message_count for c in all_compressions),
+    }
+
+
+@dataclass
 class CompressionResult:
     """Result of compressing conversation history."""
     summary: str                           # Compressed summary of older messages
@@ -42,6 +157,7 @@ class CompressionResult:
     compressed_count: int                  # Number of messages compressed
     extracted_facts: list[str]             # Key facts extracted for memory
     compression_ratio: float               # Original tokens / compressed tokens
+    metrics: CompressionMetrics | None = None  # Detailed metrics
 
 
 @dataclass
@@ -93,6 +209,7 @@ async def compress_history(
     messages: list[dict],
     router: "CognitiveRouter",
     keep_recent: int = RECENT_WINDOW_SIZE,
+    conversation_id: str = "",
 ) -> CompressionResult:
     """Compress older messages while keeping recent ones intact.
 
@@ -100,10 +217,14 @@ async def compress_history(
         messages: Full message history
         router: Cognitive router for LLM calls
         keep_recent: Number of recent messages to keep intact
+        conversation_id: Conversation ID for metrics tracking
 
     Returns:
         CompressionResult with summary and kept messages
     """
+    import time
+    start_time = time.time()
+
     if len(messages) <= keep_recent:
         # Nothing to compress
         return CompressionResult(
@@ -113,6 +234,9 @@ async def compress_history(
             extracted_facts=[],
             compression_ratio=1.0,
         )
+
+    # Calculate token estimates before compression
+    token_estimate_before = sum(estimate_tokens(str(m.get("content", ""))) for m in messages)
 
     # Split: older messages to compress, recent messages to keep
     to_compress = messages[:-keep_recent]
@@ -142,12 +266,39 @@ async def compress_history(
         summary = result.get("summary", "")
         key_facts = result.get("key_facts", [])
 
-        # Calculate compression ratio
+        # Calculate compression metrics
         original_chars = sum(len(str(m.get("content", ""))) for m in to_compress)
         compressed_chars = len(summary)
         ratio = original_chars / max(compressed_chars, 1)
 
-        logger.info(f"Compressed {len(to_compress)} messages into {compressed_chars} chars (ratio: {ratio:.1f}x)")
+        # Calculate token estimate after compression
+        token_estimate_after = estimate_tokens(summary) + sum(
+            estimate_tokens(str(m.get("content", ""))) for m in to_keep
+        )
+
+        # Calculate elapsed time
+        elapsed_ms = (time.time() - start_time) * 1000
+
+        # Create metrics
+        metrics = CompressionMetrics(
+            timestamp=datetime.now(timezone.utc),
+            conversation_id=conversation_id,
+            original_message_count=len(messages),
+            compressed_message_count=len(to_compress),
+            kept_message_count=len(to_keep),
+            compression_ratio=ratio,
+            summary_length=len(summary),
+            facts_extracted_count=len(key_facts),
+            compression_time_ms=elapsed_ms,
+            token_estimate_before=token_estimate_before,
+            token_estimate_after=token_estimate_after,
+        )
+
+        logger.info(
+            f"Compressed {len(to_compress)} messages into {compressed_chars} chars "
+            f"(ratio: {ratio:.1f}x, time: {elapsed_ms:.0f}ms, "
+            f"token savings: {token_estimate_before - token_estimate_after})"
+        )
 
         return CompressionResult(
             summary=summary,
@@ -155,18 +306,40 @@ async def compress_history(
             compressed_count=len(to_compress),
             extracted_facts=key_facts,
             compression_ratio=ratio,
+            metrics=metrics,
         )
 
     except Exception as e:
         logger.error(f"Failed to compress history: {e}")
         # Fallback: simple truncation
         fallback_summary = _simple_truncation_summary(to_compress)
+
+        elapsed_ms = (time.time() - start_time) * 1000
+        token_estimate_after = estimate_tokens(fallback_summary) + sum(
+            estimate_tokens(str(m.get("content", ""))) for m in to_keep
+        )
+
+        metrics = CompressionMetrics(
+            timestamp=datetime.now(timezone.utc),
+            conversation_id=conversation_id,
+            original_message_count=len(messages),
+            compressed_message_count=len(to_compress),
+            kept_message_count=len(to_keep),
+            compression_ratio=1.0,
+            summary_length=len(fallback_summary),
+            facts_extracted_count=0,
+            compression_time_ms=elapsed_ms,
+            token_estimate_before=token_estimate_before,
+            token_estimate_after=token_estimate_after,
+        )
+
         return CompressionResult(
             summary=fallback_summary,
             kept_messages=to_keep,
             compressed_count=len(to_compress),
             extracted_facts=[],
             compression_ratio=1.0,
+            metrics=metrics,
         )
 
 
@@ -231,12 +404,20 @@ async def manage_context_window(
 
     # Perform compression
     logger.info(f"Compressing conversation {conversation_id}: {len(messages)} messages")
-    result = await compress_history(messages, router, keep_recent=RECENT_WINDOW_SIZE)
+    result = await compress_history(
+        messages, router, keep_recent=RECENT_WINDOW_SIZE, conversation_id=conversation_id
+    )
 
     # Update window
     window.messages = result.kept_messages
     window.summary = result.summary
     window.last_compression_at = window.total_messages_seen - len(result.kept_messages)
+
+    # Record metrics
+    if result.metrics:
+        history = get_compression_history(conversation_id)
+        history.add(result.metrics)
+        logger.info(f"Compression metrics recorded: {result.metrics.to_dict()}")
 
     # Extract facts to memory if available
     if memory_store and result.extracted_facts and user_id:

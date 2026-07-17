@@ -75,6 +75,7 @@ async def conversation_get(
         "title": conv.title,
         "user_id": conv.user_id,
         "messages": conv.messages,
+        "summary": conv.summary,
         "message_count": len(conv.messages),
         "created_at": conv.created_at.isoformat(),
         "updated_at": conv.updated_at.isoformat(),
