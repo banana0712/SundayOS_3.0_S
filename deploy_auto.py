@@ -73,6 +73,7 @@ def main():
         ("backend/app/cognition/context_builder.py", f"{REMOTE_PATH}/backend/app/cognition/context_builder.py"),
         ("backend/app/cognition/tools.py", f"{REMOTE_PATH}/backend/app/cognition/tools.py"),
         ("backend/app/cognition/react_loop.py", f"{REMOTE_PATH}/backend/app/cognition/react_loop.py"),
+        ("backend/app/cognition/dispatch.py", f"{REMOTE_PATH}/backend/app/cognition/dispatch.py"),
         ("backend/app/main.py", f"{REMOTE_PATH}/backend/app/main.py"),
     ]
 
