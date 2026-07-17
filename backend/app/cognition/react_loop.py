@@ -119,6 +119,34 @@ _SKILL_DOCS: dict[str, str] = {
         "  **示例**：`weather[北京]`、`weather[Tokyo]`\n"
         "  **注意**：免费，无需 API Key。返回温度/湿度/风速/天气描述。支持中英文城市名。"
     ),
+    "create_reminder": (
+        "`create_reminder[content, when]` — 创建提醒事项。\n"
+        "  **何时使用**：用户说「提醒我」「记得」「别忘了」\n"
+        "  **不要使用**：用户只是说要做某事但没要求提醒 → 用 memory_search 记录即可\n"
+        "  **示例**：`create_reminder[开会, 明天9点]`、`create_reminder[吃药, 3小时后]`\n"
+        "  **注意**：when 支持相对时间（明天/今天/X小时后）或绝对时间。提醒保存到记忆系统。"
+    ),
+    "save_note": (
+        "`save_note[title, content]` — 保存笔记到记忆系统。\n"
+        "  **何时使用**：用户说「记下来」「做个笔记」「保存这个想法」\n"
+        "  **不要使用**：用户只是聊天 → 不需要笔记；要保存到文件 → 用 write_file\n"
+        "  **示例**：`save_note[Python技巧, 用enumerate遍历索引和值]`\n"
+        "  **注意**：笔记保存为语义记忆，可通过 memory_search 或 list_notes 检索。"
+    ),
+    "list_notes": (
+        "`list_notes[tag]` — 列出用户保存的笔记。\n"
+        "  **何时使用**：用户说「看看我的笔记」「我记了什么」「查笔记」\n"
+        "  **不要使用**：用户要搜索特定内容 → 用 memory_search 更精确\n"
+        "  **示例**：`list_notes[]`、`list_notes[Python]`\n"
+        "  **注意**：tag 可选，用于过滤特定标签的笔记。"
+    ),
+    "fetch_url": (
+        "`fetch_url[url]` — 获取 URL 内容（HTTP GET）。\n"
+        "  **何时使用**：用户给了一个链接让你「看看」「访问」「打开」，或需要调用 API\n"
+        "  **不要使用**：用户只是分享链接聊天 → 不需要实际访问；搜索信息 → 用 web_search\n"
+        "  **示例**：`fetch_url[https://api.github.com/users/octocat]`\n"
+        "  **注意**：支持 JSON/HTML/文本响应。风险等级：中等（可能访问外部服务）。"
+    ),
 
 }
 

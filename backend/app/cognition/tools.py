@@ -406,3 +406,178 @@ SKILLS.register(Skill(
     handler=_weather_handler,
     examples=["北京今天天气", "东京天气怎么样"],
 ))
+
+
+# -- orchestration skills ----------------------------------------------------
+
+async def _create_reminder_handler(content: str, when: str, *, store=None, user_id: str = "") -> str:
+    """创建提醒事项（保存到记忆系统作为 EXPERIENCE）"""
+    if not store or not user_id:
+        return "[create_reminder] Error: store or user_id missing."
+
+    from ..memory.schema import MemoryNode, MemoryType
+    from datetime import datetime, timezone
+    import uuid
+
+    # 解析时间（简单实现：支持相对时间和绝对时间）
+    when_parsed = _parse_reminder_time(when)
+    reminder_text = f"提醒：{content}（时间：{when_parsed}）"
+
+    # 保存为经验记忆
+    node = MemoryNode(
+        id=f"reminder_{uuid.uuid4().hex[:8]}",
+        user_id=user_id,
+        content=reminder_text,
+        type=MemoryType.EXPERIENCE,
+        importance=0.8,  # 提醒较重要
+        created_at=datetime.now(timezone.utc),
+        tags=["提醒", "待办"],
+    )
+    store.add(node)
+    return f"[create_reminder] 已创建提醒：{reminder_text}"
+
+
+def _parse_reminder_time(when: str) -> str:
+    """解析时间描述（简单版）"""
+    from datetime import datetime, timedelta, timezone
+
+    now = datetime.now(timezone.utc)
+    when_lower = when.lower().strip()
+
+    # 相对时间
+    if "明天" in when_lower:
+        target = now + timedelta(days=1)
+        return target.strftime("%Y-%m-%d %H:%M")
+    if "今天" in when_lower or "一会" in when_lower:
+        return now.strftime("%Y-%m-%d %H:%M")
+    if "小时" in when_lower:
+        # 提取数字
+        import re
+        match = re.search(r'(\d+)', when_lower)
+        if match:
+            hours = int(match.group(1))
+            target = now + timedelta(hours=hours)
+            return target.strftime("%Y-%m-%d %H:%M")
+
+    # 默认返回原始描述
+    return when
+
+
+async def _save_note_handler(title: str, content: str, *, store=None, user_id: str = "") -> str:
+    """保存笔记到记忆系统"""
+    if not store or not user_id:
+        return "[save_note] Error: store or user_id missing."
+
+    from ..memory.schema import MemoryNode, MemoryType
+    from datetime import datetime, timezone
+    import uuid
+
+    note_text = f"笔记「{title}」：{content}"
+    node = MemoryNode(
+        id=f"note_{uuid.uuid4().hex[:8]}",
+        user_id=user_id,
+        content=note_text,
+        type=MemoryType.SEMANTIC,  # 笔记作为语义记忆
+        importance=0.7,
+        created_at=datetime.now(timezone.utc),
+        tags=["笔记", title],
+    )
+    store.add(node)
+    return f"[save_note] 已保存笔记「{title}」（{len(content)} 字）"
+
+
+async def _list_notes_handler(tag: str = "", *, store=None, user_id: str = "") -> str:
+    """列出用户的笔记"""
+    if not store or not user_id:
+        return "[list_notes] Error: store or user_id missing."
+
+    # 搜索笔记类型的记忆
+    query = f"笔记 {tag}" if tag else "笔记"
+    hits = store.retrieve(query, user_id=user_id, k=10)
+
+    notes = [h for h in hits if "笔记" in h.node.content]
+    if not notes:
+        return "[list_notes] 未找到笔记。"
+
+    result = f"[list_notes] 找到 {len(notes)} 条笔记：\n"
+    for i, h in enumerate(notes[:10], 1):
+        # 提取标题
+        content = h.node.content
+        if "笔记「" in content:
+            title = content.split("笔记「")[1].split("」")[0]
+            result += f"{i}. {title}\n"
+        else:
+            result += f"{i}. {content[:50]}...\n"
+
+    return result
+
+
+async def _fetch_url_handler(url: str) -> str:
+    """获取 URL 内容（HTTP GET）"""
+    import httpx
+    try:
+        resp = httpx.get(url, timeout=10.0, follow_redirects=True,
+                        headers={"User-Agent": "SundayOS/1.0"})
+        resp.raise_for_status()
+
+        content_type = resp.headers.get("content-type", "").lower()
+
+        # JSON 响应
+        if "application/json" in content_type:
+            try:
+                data = resp.json()
+                return f"[fetch_url] JSON 响应（{len(str(data))} 字符）：\n{json.dumps(data, ensure_ascii=False, indent=2)[:2000]}"
+            except Exception:
+                pass
+
+        # HTML/文本响应
+        text = resp.text[:5000]  # 限制长度
+        return f"[fetch_url] 响应（{len(text)} 字符）：\n{text}"
+
+    except httpx.HTTPStatusError as e:
+        return f"[fetch_url] HTTP 错误 {e.response.status_code}: {url}"
+    except Exception as e:
+        return f"[fetch_url] 请求失败: {e}"
+
+
+# Register new skills
+SKILLS.register(Skill(
+    name="create_reminder",
+    description="创建提醒事项，指定内容和时间（相对时间如「明天」「3小时后」或绝对时间）。",
+    params={"content": "string", "when": "string"},
+    category="orchestration",
+    risk="low",
+    handler=_create_reminder_handler,
+    examples=["提醒我明天9点开会", "3小时后提醒我吃药"],
+))
+
+SKILLS.register(Skill(
+    name="save_note",
+    description="保存笔记到记忆系统，指定标题和内容。后续可通过 memory_search 或 list_notes 检索。",
+    params={"title": "string", "content": "string"},
+    category="action",
+    risk="low",
+    handler=_save_note_handler,
+    examples=["保存笔记：今天学到的Python技巧", "记录想法"],
+))
+
+SKILLS.register(Skill(
+    name="list_notes",
+    description="列出用户保存的笔记，可选标签过滤。",
+    params={"tag": "string"},
+    category="data",
+    risk="low",
+    handler=_list_notes_handler,
+    examples=["列出我的笔记", "查看关于Python的笔记"],
+))
+
+SKILLS.register(Skill(
+    name="fetch_url",
+    description="通过 HTTP GET 获取指定 URL 的内容（支持 JSON/HTML/文本）。用于访问 API 或网页内容。",
+    params={"url": "string"},
+    category="data",
+    risk="medium",
+    handler=_fetch_url_handler,
+    examples=["获取 https://api.github.com/users/octocat", "访问这个链接"],
+))
+
