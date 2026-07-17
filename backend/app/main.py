@@ -738,16 +738,13 @@ async def chat(req: ChatRequest, x_api_key: str | None = Header(default=None), x
 
     # 记录上下文检索
     if assembled:
-        memory_nodes = [
-            {"id": node.id, "content": node.content, "importance": node.importance}
-            for node in (assembled.nodes or [])[:5]  # 最多记录5个
-        ]
-        conversation_history = []  # 如果需要可以从 CONV 获取
+        # AssembledContext 只有文本字段，没有原始节点列表
+        # 记录检索到的上下文长度作为指标
         log.context_retrieved(
             request_id=request_id,
-            memory_nodes=memory_nodes,
-            conversation_history=conversation_history,
-            retrieved_count=len(assembled.nodes or [])
+            memory_nodes=[],  # 原始节点在 build_context 内部，这里无法访问
+            conversation_history=[],
+            retrieved_count=len(assembled.topic_history.split('\n')) if assembled.topic_history else 0
         )
 
     # Empathy: UU analysis → IRG guidance
