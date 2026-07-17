@@ -2,7 +2,7 @@
 
 > 诚实、可验证的当前状态。每次功能开发完成后必须更新本文件。
 
-**版本** 2.4 · **最后更新** 2026-07-17（v0.10.3）
+**版本** 2.5 · **最后更新** 2026-07-17（v0.10.5）
 
 ---
 
@@ -14,12 +14,13 @@
 后端实现     ✅ Phase 1 ~96%：引擎路由✅ 记忆三层✅ 反思✅ ReAct✅ SSE✅
               护栏✅ Chat UI✅ 账号系统✅ 反馈学习✅ 多气泡✅ 质量路由✅
               对话持久化✅ 语义 embedding（Qwen）✅ Dashboard 健康/事件真数据✅
+              **工具强制执行修复✅（持久化验证通过）**
               **Router 拆分进行中 4/8 完成（1360 → 1008 行）**
 前端口       86 测试全过（1.3s）
 前端实现     ✅ Dashboard + Brain + Memory + Chat + 移动端全适配 + 登录 UI
               ✅ **新增独立 frontend/ 目录（Next.js 15）**
 防腐机制     ✅ ENGINEERING_CONTRACT（规矩）+ /checkup（裁判）闭环
-版本管理     ✅ v0.10.2 · SemVer + Keep a Changelog
+版本管理     ✅ v0.10.5 · SemVer + Keep a Changelog
 服务器       ✅ 小兔云香港 2H2G 24/7 · /console + / 双入口
 Claude Code  ✅ Auto mode 已启用，健康检查通过
 ```
