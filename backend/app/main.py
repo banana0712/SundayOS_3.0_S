@@ -201,6 +201,10 @@ _deps.set_context(
     pref_store=PREF_STORE,
     runtime=runtime,
     engines=ENGINES,
+    router=ROUTER,
+    tools=TOOLS,
+    skills=SKILLS,
+    has_semantic=_has_semantic,
     api_key=API_KEY,
     owner_username=os.getenv("SUNDAY_OWNER_USERNAME", "").strip(),
     version=_version_str,
@@ -1105,11 +1109,19 @@ from .routers import conversations as _conv_router
 from .routers import memory as _memory_router
 from .routers import preferences as _pref_router
 from .routers import logs as _logs_router
+from .routers import debug as _debug_router
+from .routers import auth as _auth_router
+from .routers import misc as _misc_router
+from .routers import chat as _chat_router
 
 app.include_router(_admin_router.router)
 app.include_router(_conv_router.router)
 app.include_router(_memory_router.router)
 app.include_router(_pref_router.router)
 app.include_router(_logs_router.router)
+app.include_router(_debug_router.router)
+app.include_router(_auth_router.router)
+app.include_router(_misc_router.router)
+app.include_router(_chat_router.router)
 
 

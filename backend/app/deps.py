@@ -31,6 +31,10 @@ class _Context:
     pref_store: Any = None
     runtime: Any = None
     engines: Any = None
+    router: Any = None
+    tools: Any = None
+    skills: Any = None
+    has_semantic: bool = False
     api_key: str = ""
     owner_username: str = ""
     version: str = "0.0.0-dev"
