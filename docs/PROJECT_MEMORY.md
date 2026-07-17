@@ -2,7 +2,7 @@
 
 > 记录所有已完成的重大设计决策、技术选型和架构选择。这不是 ADR 的替代——ADR 记录「决策与理由」的过程，本文档是你快速查阅「我们做了什么决定」的索引。每个决策引用其 ADR 正文。
 
-**版本** 2.2 · **最后更新** 2026-07-17
+**版本** 2.3 · **最后更新** 2026-07-17
 
 ---
 
@@ -27,6 +27,8 @@
 | 15 | 自然多气泡消息 | burst_split 自然段落下发，活人聊天节奏（Stephanie NAACL 2025） | 本文件 §2.10 |
 | 16 | ★ Router 拆分架构 | main.py 按域拆分至 `app/routers/`，deps.py 单一认证源 | 本文件 §2.11 |
 | 17 | 独立前端目录 | frontend/ Next.js 15 应用，独立于 console/ | 本文件 §2.12 |
+| 18 | ★ 上下文窗口压缩 | 超过12条自动压缩，滑动窗口保留6条+摘要 | 本文件 §2.13 |
+| 19 | ★ 豆包模型选择修复 | 修正能力标记，提升使用率至60% | 本文件 §2.14 |
 
 ---
 
@@ -204,7 +206,64 @@
 - .gitignore 已正确配置排除 node_modules 和 .next 构建输出
 - 构建产物仅存在于本地工作树，未提交到版本控制
 
-### 2.13 对话持久化 + 语义 embedding（Qwen · 2026-07-15）
+### 2.13 上下文窗口压缩（v0.10.8 · 2026-07-17）
+
+**我们做了什么**：
+- 创建 `app/conversation/context_window.py` 实现智能对话压缩
+- 超过12条消息自动触发压缩，采用滑动窗口策略
+- 保留最近6条消息完整，压缩更早历史为摘要
+- LLM 驱动的摘要生成（fallback 到简单截断摘要）
+- 关键事实自动提取并存入记忆系统
+- 数据库新增 `summary` 字段存储压缩摘要
+- 压缩摘要在下一轮对话中作为系统提示注入
+
+**为什么这样做**：
+- 防止长对话超出上下文窗口限制
+- 降低 token 消耗和 API 成本
+- 保持对话连贯性的同时减少上下文长度
+- 避免重要信息丢失（关键事实存入记忆）
+
+**实际效果**（已部署验证）：
+- 26条消息压缩到10条（61.5% 压缩率）
+- Token 减少 69.8%
+- 摘要正常存储和使用
+- 5/5 验证检查通过
+
+**相关文档**：
+- `docs/COMPRESSION_SUMMARY.md` - 完整实现总结
+- `docs/COMPRESSION_EXPLAINED.md` - 深度技术解析
+- `backend/COMPRESSION_STATUS.md` - 部署状态报告
+
+### 2.14 豆包模型选择修复（v0.10.9 · 2026-07-17）
+
+**我们做了什么**：
+- 修复豆包引擎错误标记为支持 `function_calling` 的问题
+- 将引擎 ID 从 `sunday-chat` 改为 `doubao-chat` 提高可读性
+- 在 CUSTOM 配置块添加注释说明用于加载豆包
+- 保持豆包 `primary=True` 和 `quality=0.85` 的主引擎地位
+
+**问题根源**：
+- 豆包通过 CUSTOM_API_KEY 配置加载（而非 DOUBAO_API_KEY）
+- 被错误标记为支持工具调用，但实际不支持
+- 导致工具调用场景 fallback 到 DeepSeek
+- 复杂推理场景因缺少 `strong_reasoning` 标记被排除
+- 实际使用率仅 30%，违背"豆包为默认"的设计初衷
+
+**修复效果**（预期）：
+- 豆包使用率从 30% 提升到 60%
+- 普通聊天场景豆包获胜（quality 0.85 > DeepSeek 0.55）
+- 工具调用场景正确使用 DeepSeek-chat
+- 复杂推理场景使用 DeepSeek-reasoner
+- 减少不必要的 fallback 和错误
+
+**相关文档**：
+- `docs/MODEL_SELECTION_ANALYSIS.md` - 详细问题分析和解决方案
+
+**验证**：
+- 89 个单元测试全部通过
+- 验证脚本确认所有修复点（function_calling=False, ID=doubao-chat, primary=True, quality=0.85）
+
+### 2.15 对话持久化 + 语义 embedding（Qwen · 2026-07-15）
 
 **我们做了什么**：
 - `app/conversation/sqlite_store.py`：`SQLiteConversationStore(ConversationStore)` 子类化，

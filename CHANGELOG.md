@@ -10,6 +10,29 @@
 
 ---
 
+## [0.10.9] — 2026-07-17
+
+### Fixed
+- **豆包模型选择问题**：
+  - 修复豆包错误标记为支持 `function_calling` 的问题
+  - 将引擎 ID 从 `sunday-chat` 改为 `doubao-chat` 提高可读性
+  - 保持豆包 `primary=True` 和 `quality=0.85` 的主引擎地位
+  - **影响**：豆包使用率从 30% 提升到 60%（预期）
+  - 普通聊天场景豆包获胜（quality 0.85 > DeepSeek 0.55）
+  - 工具调用场景使用 DeepSeek-chat，复杂推理使用 DeepSeek-reasoner
+
+### Added
+- **模型选择分析文档** (`docs/MODEL_SELECTION_ANALYSIS.md`)：
+  - 详细分析为什么 DeepSeek 被更多使用而非豆包
+  - 对比两个模型的优劣势
+  - 提供修复方案和实施建议
+  - 解释路由器评分机制和选择逻辑
+
+### Changed
+- **引擎注册优化** (`backend/app/engines/registry.py`)：
+  - CUSTOM 配置块添加注释说明用于加载豆包
+  - 修正豆包能力标记以符合实际情况
+
 ## [0.10.8] — 2026-07-18
 
 ### Added

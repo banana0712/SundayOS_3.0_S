@@ -2,7 +2,7 @@
 
 > 诚实、可验证的当前状态。每次功能开发完成后必须更新本文件。
 
-**版本** 2.5 · **最后更新** 2026-07-17（v0.10.5）
+**版本** 2.6 · **最后更新** 2026-07-17（v0.10.9）
 
 ---
 
@@ -16,11 +16,13 @@
               对话持久化✅ 语义 embedding（Qwen）✅ Dashboard 健康/事件真数据✅
               **工具强制执行修复✅（持久化验证通过）**
               **Router 拆分进行中 4/8 完成（1360 → 1008 行）**
-前端口       86 测试全过（1.3s）
+              **上下文窗口压缩✅（12条→6条+摘要，61.5%压缩率）**
+              **豆包模型选择修复✅（使用率 30%→60% 预期）**
+前端口       89 测试全过（1.8s）
 前端实现     ✅ Dashboard + Brain + Memory + Chat + 移动端全适配 + 登录 UI
               ✅ **新增独立 frontend/ 目录（Next.js 15）**
 防腐机制     ✅ ENGINEERING_CONTRACT（规矩）+ /checkup（裁判）闭环
-版本管理     ✅ v0.10.5 · SemVer + Keep a Changelog
+版本管理     ✅ v0.10.9 · SemVer + Keep a Changelog
 服务器       ✅ 小兔云香港 2H2G 24/7 · /console + / 双入口
 Claude Code  ✅ Auto mode 已启用，健康检查通过
 ```
@@ -78,6 +80,8 @@ Claude Code  ✅ Auto mode 已启用，健康检查通过
 
 | 模块 | 内容 |
 |------|------|
+| **豆包模型选择修复 (v0.10.9)** | ✅ 修复豆包错误标记为支持 function_calling 的问题<br>引擎 ID 改名：sunday-chat → doubao-chat<br>保持 primary=True 和 quality=0.85<br>**预期效果**：使用率 30% → 60%<br>普通聊天豆包获胜，工具调用用 DeepSeek<br>新增 `docs/MODEL_SELECTION_ANALYSIS.md` 详细分析 |
+| **上下文压缩 (v0.10.8)** | ✅ 自动压缩超过12条的对话历史<br>滑动窗口：保留最近6条+摘要<br>压缩比 61.5%（26条→10条验证通过）<br>摘要自动注入下一轮对话<br>数据库新增 summary 字段<br>已部署并验证通过 |
 | **流式优化 (v0.10.3)** | ✅ 真正的逐 token 流式输出<br>新增 `CognitiveRouter.route_stream()` 方法<br>使用引擎原生 stream 能力（DeepSeek/豆包均支持）<br>替换原有"等完整响应再分块"方案<br>首字延迟大幅降低，打字效果更自然<br>已部署并验证（豆包引擎 12 块/次） |
 | 用户交互日志 | ✅ Phase 1-3 全部完成并部署<br>记录、查询、统计 API 全部上线<br>`/api/logs/interaction` 分页查询<br>`/api/logs/interaction/{request_id}` 完整链路<br>`/api/logs/interaction/stats/summary` 统计信息 |
 | 前端应用 | 新增 `frontend/` 目录（Next.js 15）<br>包含聊天界面、主题编辑器、全局样式<br>已部署到生产服务器 |
@@ -119,7 +123,7 @@ Claude Code  ✅ Auto mode 已启用，健康检查通过
 | Python | 3.11+ |
 | Node | 已装 |
 | 数据库 | SQLite（sunday.db）—— WAL 模式 |
-| 引擎 | DeepSeek×2 + 豆包（sunday-chat） |
+| 引擎 | DeepSeek×2 + 豆包（doubao-chat） |
 | 服务器 | 45.207.220.124:8005 |
 | Git | origin/main ← GitHub |
 
