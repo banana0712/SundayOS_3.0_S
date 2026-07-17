@@ -74,7 +74,12 @@ def main():
         ("backend/app/cognition/tools.py", f"{REMOTE_PATH}/backend/app/cognition/tools.py"),
         ("backend/app/cognition/react_loop.py", f"{REMOTE_PATH}/backend/app/cognition/react_loop.py"),
         ("backend/app/cognition/dispatch.py", f"{REMOTE_PATH}/backend/app/cognition/dispatch.py"),
+        ("backend/app/cognition/context_window.py", f"{REMOTE_PATH}/backend/app/cognition/context_window.py"),
+        ("backend/app/routers/chat.py", f"{REMOTE_PATH}/backend/app/routers/chat.py"),
+        ("backend/app/routers/debug.py", f"{REMOTE_PATH}/backend/app/routers/debug.py"),
         ("backend/app/main.py", f"{REMOTE_PATH}/backend/app/main.py"),
+        ("backend/test_context_window.py", f"{REMOTE_PATH}/backend/test_context_window.py"),
+        ("backend/test_compression_observability.py", f"{REMOTE_PATH}/backend/test_compression_observability.py"),
     ]
 
     success_count = 0

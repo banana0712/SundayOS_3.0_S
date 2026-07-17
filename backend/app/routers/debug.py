@@ -197,3 +197,36 @@ async def debug_context(req: EmpathyRequest, user_id: str = Depends(get_current_
         "total_chars": assembled.total_chars,
         "close_to_cap": assembled.total_chars > 2400,
     }
+
+
+@router.get("/compression-stats")
+async def get_compression_stats(user_id: str = Depends(get_current_user)) -> dict:
+    """Get aggregate compression statistics across all conversations."""
+    from ..cognition.context_window import get_all_compression_stats
+
+    return {
+        "status": "ok",
+        "stats": get_all_compression_stats(),
+    }
+
+
+@router.get("/compression-history/{conversation_id}")
+async def get_conversation_compression_history(
+    conversation_id: str,
+    user_id: str = Depends(get_current_user)
+) -> dict:
+    """Get compression history for a specific conversation.
+
+    Returns detailed metrics for each compression operation including:
+    - Compression ratio and time
+    - Token savings
+    - Facts extracted
+    - Quality scores (when available)
+    """
+    from ..cognition.context_window import get_compression_history
+
+    history = get_compression_history(conversation_id)
+    return {
+        "status": "ok",
+        "data": history.to_dict(),
+    }

@@ -50,13 +50,14 @@ def build_engines() -> list:
     # OpenAI-compatible endpoint (88api, one-api, LiteLLM, vLLM, etc.).
     # CUSTOM_MODEL controls the default model; CUSTOM_MODEL_REASONER
     # (optional) adds a second "strong reasoning" slot.
+    # NOTE: 生产环境用此配置加载豆包（doubao-seed-character-260628）
     custom_key = env("CUSTOM_API_KEY")
     if custom_key:
         base = env("CUSTOM_BASE_URL", "https://api.openai.com/v1")
         model = env("CUSTOM_MODEL", "gpt-4o")
         engines.append(OpenAICompatibleProvider(
-            id="sunday-chat", api_key=custom_key, base_url=base, model=model,
-            caps=EngineCapabilities(function_calling=True, max_context=128_000,
+            id="doubao-chat", api_key=custom_key, base_url=base, model=model,
+            caps=EngineCapabilities(function_calling=False, max_context=128_000,
                                     languages=("zh", "en"),
                                     quality=0.85, primary=True),
             price_in=0, price_out=0,
