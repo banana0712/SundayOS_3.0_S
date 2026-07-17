@@ -143,9 +143,8 @@ def main():
     if git_status.strip():
         print(f"  变更文件:\n{git_status}")
 
-        # 提交变更
-        commit_msg = f"deploy: auto-deploy from server at $(date '+%Y-%m-%d %H:%M:%S')\n\nCo-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
-        commit_cmd = f"cd {REMOTE_PATH} && git commit -m '{commit_msg}'"
+        # 提交变更（使用单引号避免 shell 展开，使用 \$() 转义）
+        commit_cmd = f'cd {REMOTE_PATH} && git commit -m "deploy: auto-deploy from server at $(date +\'%Y-%m-%d %H:%M:%S\')"'
         stdin, stdout, stderr = ssh.exec_command(commit_cmd)
         exit_code = stdout.channel.recv_exit_status()
 
@@ -157,8 +156,16 @@ def main():
     else:
         print("  ℹ 服务器端没有新变更")
 
-    # 6. 推送到 GitHub
-    print("\n5. 推送到 GitHub...")
+    # 6. 推送到 GitHub（先 pull 再 push）
+    print("\n5. 同步到 GitHub...")
+
+    # 先 pull rebase
+    pull_cmd = f"cd {REMOTE_PATH} && git pull --rebase origin main 2>&1"
+    stdin, stdout, stderr = ssh.exec_command(pull_cmd)
+    pull_output = stdout.read().decode('utf-8')
+    print(f"  ℹ Pull: {pull_output.strip()[:100]}")
+
+    # 再 push
     push_cmd = f"cd {REMOTE_PATH} && git push origin main 2>&1"
     stdin, stdout, stderr = ssh.exec_command(push_cmd)
     push_output = stdout.read().decode('utf-8')
@@ -169,7 +176,7 @@ def main():
         if "up to date" in push_output.lower():
             print("  ℹ GitHub 已是最新")
     else:
-        print(f"  ⚠ 推送失败: {push_output}")
+        print(f"  ⚠ 推送输出: {push_output}")
 
     # 7. 重启服务
     print("\n6. 重启服务...")
