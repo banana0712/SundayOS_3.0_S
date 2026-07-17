@@ -996,24 +996,36 @@ async def chat_stream(req: ChatRequest,
             reply = react_result.answer
             engine = "react-loop"
             system_label = "reasoner"
+            trace_obj = None
         else:
-            # System 1: stream word by word
+            # System 1: 真正的流式输出（逐 token）
             messages = [
                 EngineMessage(role="system", content=system_prompt),
                 EngineMessage(role="user", content=req.message),
             ]
-            result = await ROUTER.route(CognitiveRequest(
-                messages=messages, complexity=Complexity.L2_DAILY,
+
+            # 使用路由器的流式方法
+            reply = ""
+            engine = None
+            trace_obj = None
+
+            # 逐 token 流式发送
+            async for item in ROUTER.route_stream(CognitiveRequest(
+                messages=messages,
+                complexity=Complexity.L2_DAILY,
                 prefer_chinese=True,
-            ))
-            reply = result.response.text if result.response else "抱歉，引擎暂时不可用。"
-            engine = result.trace.chosen or "none"
+                temperature=0.7,
+            )):
+                # 检查是否是 trace（最后的元数据）
+                if isinstance(item, tuple) and item[0] == "__trace__":
+                    trace_obj = item[1]
+                    engine = trace_obj.chosen or "none"
+                elif isinstance(item, str):
+                    # 正常的文本块
+                    reply += item
+                    yield f"data: {_json.dumps({'type': 'text', 'content': item})}\n\n"
+
             system_label = "talker"
-            # Stream chunks
-            words = reply.split()
-            for i in range(0, len(words), 3):
-                chunk = " ".join(words[i:i+3])
-                yield f"data: {_json.dumps({'type': 'text', 'content': chunk + ' '})}\n\n"
 
         # Done event — include bursts for multi-bubble rendering
         done_payload = {
@@ -1037,9 +1049,10 @@ async def chat_stream(req: ChatRequest,
             _record_stats("react-loop", react_result.total_latency_ms, 0, 0, 0,
                           event=f"ReAct · {req.message[:40]}")
         else:
-            _lat = result.trace.latency_ms if result and result.trace else 0
-            _usage = getattr(result.trace, "usage", {}) or {} if result and result.trace else {}
-            _record_stats(engine, _lat,
+            # 使用流式路由返回的 trace
+            _lat = trace_obj.latency_ms if trace_obj else 0
+            _usage = trace_obj.usage if trace_obj else {}
+            _record_stats(engine or "none", _lat,
                           _usage.get("prompt_tokens", 0), _usage.get("completion_tokens", 0),
                           _usage.get("cost_usd", 0),
                           event=f"{engine} · {req.message[:40]}")

@@ -238,6 +238,69 @@ class CognitiveRouter:
         trace.chosen = None
         return CognitiveResult(response=None, trace=trace)
 
+    async def route_stream(self, req: CognitiveRequest):
+        """流式路由：逐 token 产生文本，最后返回 trace
+
+        选择最优引擎后直接返回其 stream() 迭代器，由调用方消费。
+        如果首选引擎失败，自动 fallback 到下一个。
+
+        Yields:
+            str | RouteTrace: 文本块（str）或最终的路由追踪（RouteTrace）
+        """
+        from typing import AsyncIterator
+
+        ranked, trace = self.plan(req)
+        t0 = time.monotonic()
+
+        for i, engine in enumerate(ranked):
+            try:
+                # 尝试流式输出
+                full_text = ""
+                async for chunk in engine.stream(req.messages, temperature=req.temperature):
+                    full_text += chunk
+                    yield chunk  # 直接 yield 文本块
+
+                # 流式成功完成
+                self.breaker.record_success(engine.id)
+                trace.chosen = engine.id
+                if i > 0:
+                    trace.fallbacks_used = [e.id for e in ranked[:i]]
+
+                # 估算 token 使用（流式无法获取精确值）
+                est_prompt = estimate_tokens(req.messages)
+                est_completion = max(1, len(full_text) // 4)
+                trace.usage = {
+                    "prompt_tokens": est_prompt,
+                    "completion_tokens": est_completion,
+                    "cost_usd": round(
+                        (engine.price_in * est_prompt + engine.price_out * est_completion) / 1_000_000, 6
+                    ),
+                }
+                trace.latency_ms = round((time.monotonic() - t0) * 1000, 1)
+
+                # 最后 yield trace（用特殊标记区分）
+                yield ("__trace__", trace)
+                return
+
+            except Exception as exc:  # noqa: BLE001
+                self.breaker.record_failure(engine.id)
+                trace.fallbacks_used.append(engine.id)
+                err_str = f"{type(exc).__name__}: {str(exc)[:300]}"
+                trace.errors[engine.id] = err_str
+
+                from app.log_engine import log as _log
+                _log.engine_error(engine.id, type(exc).__name__, err_str, attempt=i + 1)
+                if i + 1 < len(ranked):
+                    _log.engine_fallback(engine.id, ranked[i + 1].id, err_str)
+                    # 继续尝试下一个引擎
+                    continue
+
+        # 所有引擎都失败
+        trace.latency_ms = round((time.monotonic() - t0) * 1000, 1)
+        trace.chosen = None
+        yield "抱歉，所有引擎暂时不可用，请稍后重试。"
+        yield ("__trace__", trace)
+
 
 def _explain(complexity: Complexity, req: CognitiveRequest) -> str:
     bits = [f"complexity={complexity.name}"]
