@@ -10,6 +10,40 @@
 
 ---
 
+## [0.10.3] — 2026-07-17
+
+### Added
+- **真正的流式输出优化**: 
+  - 新增 `CognitiveRouter.route_stream()` 方法，支持逐 token 流式输出
+  - 使用引擎原生 `stream()` 能力（OpenAI-compatible providers）
+  - 自动 fallback 链支持流式路由
+  - 保留完整的 RouteTrace 统计（token/cost/latency 估算）
+- **用户交互日志系统（Phase 1-3）**:
+  - Phase 1: 日志记录（所有交互事件）
+  - Phase 2: 查询 API (`/api/logs/interaction` + `/{request_id}`)
+  - Phase 3: 统计 API (`/api/logs/interaction/stats/summary`)
+  - 完整交互链路追踪（start → guardrail → context → memory → complete）
+
+### Changed
+- **流式体验提升**:
+  - 替换原有"等完整响应再按词分块"方案
+  - 首字延迟大幅降低（即时可见）
+  - 打字效果更自然流畅
+  - 已在生产环境验证（豆包引擎，12-14 块/次）
+- **自动部署脚本**: 
+  - `deploy_auto.py` 支持直接 SSH/SFTP 上传
+  - 无需依赖 GitHub 网络（本地→服务器直连）
+  - 密码保存后零交互部署
+
+### Fixed
+- 流式端点 token 统计：使用估算值（真实流式无法获取精确 token 数）
+
+### Deployed
+- 流式优化已部署到生产服务器（45.207.220.124:8005）
+- 服务状态：健康运行中
+
+---
+
 ## [0.10.2] — 2026-07-17
 
 ### Added

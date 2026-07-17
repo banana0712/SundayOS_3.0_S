@@ -2,7 +2,7 @@
 
 > 诚实、可验证的当前状态。每次功能开发完成后必须更新本文件。
 
-**版本** 2.4 · **最后更新** 2026-07-17（v0.10.2）
+**版本** 2.4 · **最后更新** 2026-07-17（v0.10.3）
 
 ---
 
@@ -42,7 +42,7 @@ Claude Code  ✅ Auto mode 已启用，健康检查通过
 | 会话内记忆检索（复合评分 + SQLite 持久化） | `backend/app/memory/sqlite_store.py` |
 | 双系统切换（Talker/Reasoner 判据） | `backend/app/cognition/dispatch.py` |
 | ReAct 循环（Thought→Action→Observation） | `backend/app/cognition/react_loop.py` |
-| SSE 流式聊天 | `POST /api/chat/stream` |
+| SSE 流式聊天（真正的逐 token 输出） | `POST /api/chat/stream` + `router.route_stream()` |
 | 注入/越狱拦截 + PII 脱敏 | `backend/app/guardrails/pipeline.py` |
 | 结构运行日志（JSON + 轮转） | `backend/app/log_engine.py` |
 | 自然多气泡消息（burst_split） | `backend/app/cognition/burst_split.py` |
@@ -77,9 +77,11 @@ Claude Code  ✅ Auto mode 已启用，健康检查通过
 
 | 模块 | 内容 |
 |------|------|
+| **流式优化 (v0.10.3)** | ✅ 真正的逐 token 流式输出<br>新增 `CognitiveRouter.route_stream()` 方法<br>使用引擎原生 stream 能力（DeepSeek/豆包均支持）<br>替换原有"等完整响应再分块"方案<br>首字延迟大幅降低，打字效果更自然<br>已部署并验证（豆包引擎 12 块/次） |
+| 用户交互日志 | ✅ Phase 1-3 全部完成并部署<br>记录、查询、统计 API 全部上线<br>`/api/logs/interaction` 分页查询<br>`/api/logs/interaction/{request_id}` 完整链路<br>`/api/logs/interaction/stats/summary` 统计信息 |
 | 前端应用 | 新增 `frontend/` 目录（Next.js 15）<br>包含聊天界面、主题编辑器、全局样式<br>已部署到生产服务器 |
 | Claude Code | 运行 `/doctor` 健康检查，启用 auto mode 默认权限模式 |
-| 部署 | 使用 `/deploy` 自动部署到服务器（本地→GitHub→服务器）<br>服务状态：健康运行中 |
+| 部署 | 使用 `/deploy` 自动部署到服务器（本地→服务器直连）<br>`deploy_auto.py` 零交互自动上传+重启<br>服务状态：健康运行中 |
 
 ### 2026-07-16
 
