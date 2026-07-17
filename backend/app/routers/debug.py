@@ -8,10 +8,11 @@ from ..deps import get_current_user, ctx
 from ..engines.base import EngineMessage, Complexity
 from ..engines.router import CognitiveRequest
 from ..memory.sqlite_store import SQLiteMemoryStore
-from ..memory.base import MemoryType
+from ..memory.schema import MemoryType
 from ..cognition.context_builder import build_context
-from ..persona.empathy import run_empathy_pipeline, EmpathyRequest
-from .. import runtime, log
+from ..persona.empathy import run_empathy_pipeline
+from ..log_engine import log
+from .. import runtime
 
 if TYPE_CHECKING:
     from ..deps import _Context

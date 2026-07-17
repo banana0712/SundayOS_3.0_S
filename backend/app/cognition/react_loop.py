@@ -238,14 +238,43 @@ def _parse_tool_args(tool_input: str, param_schema: dict) -> dict:
     Examples:
         "title, content" → {"title": "title", "content": "content"}
         "Python技巧, 用enumerate遍历" → {"title": "Python技巧", "content": "用enumerate遍历"}
+        "开会, 明天9点" → {"content": "开会", "when": "明天9点"}
     """
     if not tool_input or not param_schema:
         return {}
 
     param_names = list(param_schema.keys())
 
-    # 按逗号分割（简单实现）
-    parts = [p.strip() for p in tool_input.split(",")]
+    # 按逗号分割
+    parts = [p.strip() for p in tool_input.split(",", len(param_names) - 1)]
+
+    # 如果分割结果少于参数数量，尝试智能推断（针对特定工具）
+    if len(parts) < len(param_names):
+        # 特殊处理 create_reminder: "明天下午3点开会" → content="开会", when="明天下午3点"
+        if param_names == ["content", "when"] or param_names == ["when", "content"]:
+            # 尝试识别时间表达式
+            import re
+            time_pattern = r'(明天|今天|后天|[0-9一二三四五六七八九十]+[天小时分钟]后|[0-9]{1,2}[点时]|下午|上午|晚上|早上)'
+            match = re.search(time_pattern, tool_input)
+            if match:
+                when_part = match.group(0)
+                # 提取时间后面的完整描述
+                when_start = match.start()
+                # 时间在前：明天9点开会 → when="明天9点", content="开会"
+                # 时间在后：开会明天9点 → content="开会", when="明天9点"
+                if when_start < len(tool_input) // 2:
+                    # 时间在前半部分
+                    when = tool_input[:when_start + len(when_part)].strip()
+                    content = tool_input[when_start + len(when_part):].strip()
+                else:
+                    # 时间在后半部分
+                    content = tool_input[:when_start].strip()
+                    when = tool_input[when_start:].strip()
+
+                if param_names[0] == "content":
+                    return {"content": content or tool_input, "when": when or "今天"}
+                else:
+                    return {"when": when or "今天", "content": content or tool_input}
 
     # 匹配参数名和值
     kwargs = {}
@@ -427,8 +456,13 @@ class ReActLoop:
                                 **{list(tool.params.keys())[0]: p.tool_input or ""}
                             )
                         else:
+                            # 无参数工具
+                            print(f"[DEBUG] Calling no-param tool: {tool.name}, handler={tool.handler}")
                             obs_text = await tool.handler()
+                            print(f"[DEBUG] Result: {obs_text[:100]}")
                     except Exception as e:
+                        import traceback
+                        print(f"[ERROR] Tool '{tool.name}' exception: {traceback.format_exc()}")
                         obs_text = f"[error] Tool '{tool.name}' failed: {e}"
 
                     tool_latency = round((time.monotonic() - t_tool) * 1000, 1)

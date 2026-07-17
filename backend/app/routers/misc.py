@@ -6,7 +6,8 @@ from fastapi.responses import Response as FastAPIResponse
 from pydantic import BaseModel
 
 from ..deps import get_current_user, ctx
-from .. import runtime, log
+from ..log_engine import log
+from .. import runtime
 from ..persona.empathy import run_empathy_pipeline
 
 router = APIRouter(tags=["misc"])

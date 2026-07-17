@@ -64,11 +64,11 @@ def _get_recent_topics(conv_id: str, limit: int = 3) -> list[str]:
 
     # 提取最近几条用户消息的关键词
     topics = []
-    user_messages = [m for m in conv.messages[-6:] if m.role == "user"]
+    user_messages = [m for m in conv.messages[-6:] if m.get("role") == "user"]
 
     for msg in user_messages[-limit:]:
         # 简单规则：提取常见话题词
-        content = msg.content.lower()
+        content = msg.get("content", "").lower()
         topic_keywords = {
             "运动": ["跑步", "健身", "运动", "游泳"],
             "工作": ["工作", "项目", "会议", "代码"],
@@ -94,6 +94,38 @@ try:
 except Exception:
     _version_str = "0.0.0-dev"
 app = FastAPI(title="Sunday OS", version=_version_str)
+
+# Global exception handler to catch all unhandled exceptions
+import logging
+import traceback
+from fastapi import Request
+from fastapi.responses import JSONResponse
+
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """Catch all unhandled exceptions and log them with full traceback."""
+    logger.error(f"=== UNHANDLED EXCEPTION ===")
+    logger.error(f"Request: {request.method} {request.url.path}")
+    logger.error(f"Exception type: {type(exc).__name__}")
+    logger.error(f"Exception message: {str(exc)}")
+    logger.error(f"Full traceback:\n{traceback.format_exc()}")
+    logger.error(f"=== END EXCEPTION ===")
+
+    return JSONResponse(
+        status_code=500,
+        content={
+            "error": "Internal Server Error",
+            "detail": str(exc),
+            "type": type(exc).__name__,
+            "path": str(request.url.path)
+        }
+    )
 
 # CORS — the API is auth-protected via X-API-Key, so we allow any origin to
 # call it (iPhone Shortcuts, the web console on another domain, curl, etc.).

@@ -10,16 +10,18 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from ..deps import get_current_user, ctx
-from .. import runtime, log
+from ..log_engine import log
+from .. import runtime
 from ..engines.base import EngineMessage, Complexity
 from ..engines.router import CognitiveRequest
-from ..memory.base import MemoryNode, MemoryType
+from ..memory.schema import MemoryNode, MemoryType
 from ..memory.reflection import schedule_reflection
 from ..memory.importance import score_importance
 from ..cognition.context_builder import build_context
 from ..cognition.dispatch import needs_reasoner, risk_level, BeliefState
 from ..cognition.react_loop import ReActLoop
 from ..cognition.burst_split import burst_split
+from ..cognition.context_window import manage_context_window, build_context_with_window
 from ..persona import build_prompt_with_prefs
 from ..persona.empathy import run_empathy_pipeline
 from ..guardrails.pipeline import check_input, GuardrailTripwire
@@ -49,11 +51,11 @@ def _get_recent_topics(conv_id: str, limit: int = 3) -> list[str]:
 
     # 提取最近几条用户消息的关键词
     topics = []
-    user_messages = [m for m in conv.messages[-6:] if m.role == "user"]
+    user_messages = [m for m in conv.messages[-6:] if m.get("role") == "user"]
 
     for msg in user_messages[-limit:]:
         # 简单规则：提取常见话题词
-        content = msg.content.lower()
+        content = msg.get("content", "").lower()
         topic_keywords = {
             "运动": ["跑步", "健身", "运动", "游泳"],
             "工作": ["工作", "项目", "会议", "代码"],
@@ -105,6 +107,38 @@ async def chat(req: ChatRequest, user_id: str = Depends(get_current_user)) -> di
     recent_topics = _get_recent_topics(req.conversation_id)
     assembled = await build_context(req.message, user_id, ctx.memory, ctx.router, recent_topics=recent_topics)
     context_block = assembled.to_prompt_section() if assembled else ""
+
+    # Apply context window management for long conversations
+    conversation_messages = []
+    if req.conversation_id:
+        conv = ctx.conversations.get(req.conversation_id)
+        if conv and conv.messages:
+            try:
+                # Manage context window: compress if needed
+                window = await manage_context_window(
+                    conversation_id=req.conversation_id,
+                    messages=conv.messages,
+                    router=ctx.router,
+                    memory_store=ctx.memory,
+                    user_id=user_id,
+                )
+                # Build final message list with compression summary
+                conversation_messages = build_context_with_window(window)
+
+                # Log compression if occurred
+                if window.summary:
+                    log.context_retrieved(
+                        request_id=request_id,
+                        memory_nodes=[],
+                        conversation_history=conversation_messages,
+                        retrieved_count=len(conversation_messages)
+                    )
+            except Exception as e:
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.error(f"[ERROR] Context window management failed: {e}", exc_info=True)
+                # Continue without compression on error
+                conversation_messages = []
 
     # 记录上下文检索
     if assembled:
@@ -162,11 +196,31 @@ async def chat(req: ChatRequest, user_id: str = Depends(get_current_user)) -> di
         }
         chosen_engine = "react-loop"
     else:
-        # System 1: single completion
+        # System 1: single completion with conversation history
         messages = [
             EngineMessage(role="system", content=system_prompt),
-            EngineMessage(role="user", content=req.message),
         ]
+
+        # Add compressed conversation history if available
+        if conversation_messages:
+            for msg in conversation_messages:
+                # Ensure msg is a dict
+                if not isinstance(msg, dict):
+                    continue
+                role = msg.get("role", "user")
+                content = msg.get("content", "")
+                # Skip system messages from compression (already in system_prompt)
+                if role == "system":
+                    # System message from compression summary - add to system prompt
+                    system_prompt += f"\n\n{content}"
+                    continue
+                # Only add user/assistant messages
+                if role in ("user", "assistant"):
+                    messages.append(EngineMessage(role=role, content=content))
+
+        # Add current user message
+        messages.append(EngineMessage(role="user", content=req.message))
+
         # Pre-route log: what the router sees
         ranked, plan_trace = ctx.router.plan(CognitiveRequest(
             messages=messages, complexity=complexity, prefer_chinese=True))
