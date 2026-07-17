@@ -1,42 +1,88 @@
 # /deploy · SundayOS 一键部署
 
-> 用法：在任意会话输入 `/deploy`，自动完成「本地 → GitHub → 服务器」三步部署。
+> 用法：在任意会话输入 `/deploy`，自动完成「本地提交 → 服务器部署」全流程。
 
 ---
 
 ## 执行流程
 
-### ① 本地 → GitHub
-1. 检查是否有未提交的改动
-2. 如果有改动，自动 `git add -A` + `git commit`
-3. `git push origin main` 推送到 GitHub
+### 完整部署步骤
 
-### ② GitHub → 服务器
-1. SSH 登录小兔云服务器（45.207.220.124）
-2. `git pull origin main` 拉取最新代码
-3. 更新 Python 依赖
-4. 重启 `sunday.service`
-5. 验证健康端点
+1. **提交本地改动**（如果有未提交的文件）
+   - `git add` 相关文件
+   - `git commit` 带时间戳和 Co-Authored-By
+   - `git push origin main`（可选，如果 GitHub 网络可用）
 
-### ③ 验证
-- 检查服务状态
-- 输出版本号
-- 显示健康端点 JSON
+2. **自动上传到服务器**
+   - 使用 `deploy_auto.py` 脚本
+   - 通过 SSH + SFTP 直接上传修改的文件
+   - 无需依赖 GitHub（网络不稳定也能部署）
+
+3. **重启服务**
+   - `systemctl restart sunday.service`
+   - 检查服务状态
+
+4. **验证部署**
+   - 显示服务运行状态
+   - 可选：测试关键 API 端点
 
 ---
 
-## 执行方式
+## AI 执行指令
 
-AI 会自动执行：
+当用户输入 `/deploy` 时，按以下步骤执行：
 
-```python
+### 1. 检查未提交的改动
+
+```bash
+git status --short
+```
+
+如果有改动，提交：
+
+```bash
+git add <修改的文件>
+git commit -m "deploy: auto-deploy from local at $(date '+%Y-%m-%d %H:%M:%S')
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
+```
+
+### 2. 尝试推送到 GitHub（可选）
+
+```bash
+git push origin main
+```
+
+如果失败（网络问题），继续执行下一步（不阻塞部署）。
+
+### 3. 执行自动部署脚本
+
+```bash
 python deploy_auto.py
 ```
 
-**前提条件：**
-- 本地已配置 Git（用户名、邮箱）
-- 服务器密码已配置在 `deploy_auto.py`（FvzHPk2crcQ6）
+脚本会：
+- 连接服务器（root@45.207.220.124，密码已内置）
+- 上传修改的文件到 /opt/sundayos
+- 重启 sunday.service
+- 显示服务状态
+
+### 4. 部署成功提示
+
+输出：
+- ✓ 文件上传完成
+- ✓ 服务已重启
+- 服务状态（Active: active (running)）
+- API 地址：http://45.207.220.124:8005
+
+---
+
+## 前提条件
+
+- `deploy_auto.py` 存在于项目根目录
+- Python 3.x 已安装
 - paramiko 库已安装（`pip install paramiko`）
+- 服务器密码已配置在脚本中
 
 ---
 

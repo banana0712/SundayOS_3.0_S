@@ -1,205 +1,108 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""
-Sunday OS 完整部署脚本
-支持两种模式：
-1. 本地推送模式：本地 → GitHub → 服务器
-2. 服务器推送模式：本地 → 服务器 → GitHub → 服务器重启
+"""SundayOS 一键自动部署脚本（零交互）"""
 
-当本地网络不稳定时，使用模式 2 从服务器推送到 GitHub
-"""
 import paramiko
-import sys
-import time
-import io
-import subprocess
 import os
+import sys
+from pathlib import Path
 
-# 修复Windows控制台编码问题
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
-sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+# 修复 Windows 控制台编码
+if sys.platform == 'win32':
+    import io
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
 
+# ========== 配置区（首次使用请修改） ==========
 SERVER = "45.207.220.124"
-USER = "root"
-PASSWORD = "FvzHPk2crcQ6"
 PORT = 22
+USERNAME = "root"
+PASSWORD = "FvzHPk2crcQ6"
+REMOTE_PATH = "/opt/sundayos"
+# =============================================
 
-def run_command(ssh, command):
-    """执行SSH命令并打印输出"""
-    stdin, stdout, stderr = ssh.exec_command(command)
-    exit_status = stdout.channel.recv_exit_status()
+CONFIG_FILE = Path.home() / ".sundayos_deploy_config"
 
-    output = stdout.read().decode('utf-8')
-    error = stderr.read().decode('utf-8')
-
-    if output:
-        print(output)
-    if error:
-        print(error, file=sys.stderr)
-
-    return exit_status == 0
-
-def check_local_changes():
-    """检查本地是否有未提交的改动"""
-    result = subprocess.run(['git', 'status', '--short'], capture_output=True, text=True)
-    return result.stdout.strip()
-
-def local_commit_and_push():
-    """本地提交并推送到GitHub"""
-    print(">>> 第一步：本地推送到 GitHub")
-    print()
-
-    changes = check_local_changes()
-    if changes:
-        print("发现未提交的改动：")
-        print(changes)
-        print()
-
-        # 添加所有改动
-        print(">>> 添加所有改动...")
-        subprocess.run(['git', 'add', '-A'], check=True)
-        print("✓ 已添加")
-        print()
-
-        # 提交
-        commit_msg = f"deploy: auto-deploy from local at {time.strftime('%Y-%m-%d %H:%M:%S')}\n\nCo-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
-        print(">>> 提交改动...")
-        subprocess.run(['git', 'commit', '-m', commit_msg], check=True)
-        print("✓ 已提交")
-        print()
-
-    # 推送到 GitHub
-    print(">>> 推送到 GitHub...")
-    result = subprocess.run(['git', 'push', 'origin', 'main'], capture_output=True, text=True, timeout=30)
-
-    if result.returncode == 0:
-        print("✓ 推送成功")
-        return True
-    elif 'up-to-date' in result.stderr.lower() or 'up to date' in result.stdout.lower():
-        print("✓ 已是最新（无需推送）")
-        return True
+def load_or_save_password():
+    """加载或保存密码"""
+    global PASSWORD
+    if CONFIG_FILE.exists():
+        PASSWORD = CONFIG_FILE.read_text().strip()
+        print("✓ 已加载保存的密码")
     else:
-        print("✗ 本地推送失败:")
-        print(result.stderr)
+        if not PASSWORD:
+            import getpass
+            PASSWORD = getpass.getpass("请输入服务器密码（仅首次需要）: ")
+        CONFIG_FILE.write_text(PASSWORD)
+        CONFIG_FILE.chmod(0o600)
+        print("✓ 密码已保存，下次无需输入")
+
+def upload_file(sftp, local_path, remote_path):
+    """上传单个文件"""
+    try:
+        sftp.put(local_path, remote_path)
+        print(f"  ✓ {local_path}")
+        return True
+    except Exception as e:
+        print(f"  ✗ {local_path}: {e}")
         return False
 
-def server_push_mode(ssh):
-    """服务器推送模式：从服务器推送到GitHub"""
-    print(">>> 使用服务器推送模式（网络更稳定）")
-    print()
+def main():
+    print("=== SundayOS 自动部署 ===\n")
 
-    commands = [
-        ("拉取本地最新提交", "cd /opt/sundayos && git fetch origin && git reset --hard origin/main"),
-        ("推送到 GitHub", "cd /opt/sundayos && git push origin main"),
-    ]
+    # 1. 加载密码
+    load_or_save_password()
 
-    for desc, cmd in commands:
-        print(f">>> {desc}...")
-        if run_command(ssh, cmd):
-            print(f"✓ {desc}完成")
-        else:
-            print(f"✗ {desc}失败")
-            return False
-        print()
-
-    return True
-
-def server_deploy(ssh):
-    """服务器部署"""
-    print(">>> 第二步：服务器部署")
-    print()
-
-    commands = [
-        ("进入项目目录", "cd /opt/sundayos && pwd"),
-        ("拉取最新代码", "cd /opt/sundayos && git pull origin main"),
-        ("检查版本", "cd /opt/sundayos && cat VERSION"),
-        ("更新依赖", "cd /opt/sundayos && source .venv/bin/activate && pip install -q -r backend/requirements.txt"),
-        ("重启服务", "systemctl restart sunday.service"),
-        ("等待服务启动", "sleep 3"),
-        ("检查服务状态", "systemctl status sunday.service --no-pager -l | head -15"),
-        ("验证健康端点", "curl -s http://localhost:8005/health | python3 -m json.tool"),
-    ]
-
-    for desc, cmd in commands:
-        print(f">>> {desc}...")
-        if run_command(ssh, cmd):
-            print(f"✓ {desc}完成")
-        else:
-            print(f"✗ {desc}失败")
-        print()
-
-    return True
-
-def deploy_via_server():
-    """完整部署：优先本地推送，失败则用服务器推送"""
-    print("=" * 50)
-    print("  Sunday OS 完整部署")
-    print("  本地 → GitHub → 服务器")
-    print("=" * 50)
-    print()
-
-    # 先在本地提交
-    changes = check_local_changes()
-    if changes:
-        print(">>> 发现本地改动，先提交...")
-        print(changes)
-        print()
-
-        subprocess.run(['git', 'add', '-A'], check=True)
-        commit_msg = f"deploy: auto-deploy from local at {time.strftime('%Y-%m-%d %H:%M:%S')}\n\nCo-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
-        subprocess.run(['git', 'commit', '-m', commit_msg], check=True)
-        print("✓ 本地已提交")
-        print()
-
-    # 创建SSH连接
+    # 2. 连接服务器
+    print("\n1. 连接服务器...")
     ssh = paramiko.SSHClient()
     ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
 
     try:
-        print(">>> 连接服务器...")
-        ssh.connect(SERVER, PORT, USER, PASSWORD, timeout=10)
-        print("✓ 连接成功")
-        print()
-
-        # 尝试本地推送
-        print(">>> 尝试从本地推送到 GitHub...")
-        try:
-            push_result = subprocess.run(['git', 'push', 'origin', 'main'],
-                                        capture_output=True, text=True, timeout=15)
-            if push_result.returncode == 0 or 'up-to-date' in push_result.stderr.lower():
-                print("✓ 本地推送成功")
-                print()
-            else:
-                raise Exception("本地推送失败")
-        except:
-            print("✗ 本地网络不稳定")
-            print()
-
-            # 改用服务器推送
-            if not server_push_mode(ssh):
-                print("✗ 服务器推送也失败")
-                return False
-
-        # 服务器部署
-        return server_deploy(ssh)
-
+        ssh.connect(SERVER, PORT, USERNAME, PASSWORD, timeout=10)
+        print(f"  ✓ 已连接到 {SERVER}")
     except Exception as e:
-        print(f"✗ 部署失败: {e}")
-        import traceback
-        traceback.print_exc()
-        return False
-    finally:
-        ssh.close()
+        print(f"  ✗ 连接失败: {e}")
+        sys.exit(1)
 
-    print("=" * 50)
-    print("  ✅ 部署完成！")
-    print("=" * 50)
-    print()
-    print("外网验证:")
-    print("  curl http://45.207.220.124:8005/health")
+    # 3. 上传文件
+    print("\n2. 上传文件...")
+    sftp = ssh.open_sftp()
 
-    return True
+    files_to_upload = [
+        ("backend/app/routers/logs.py", f"{REMOTE_PATH}/backend/app/routers/logs.py"),
+        ("backend/app/main.py", f"{REMOTE_PATH}/backend/app/main.py"),
+    ]
+
+    success_count = 0
+    for local, remote in files_to_upload:
+        if upload_file(sftp, local, remote):
+            success_count += 1
+
+    sftp.close()
+    print(f"  完成: {success_count}/{len(files_to_upload)} 个文件")
+
+    # 4. 重启服务
+    print("\n3. 重启服务...")
+    stdin, stdout, stderr = ssh.exec_command("systemctl restart sunday.service")
+    exit_code = stdout.channel.recv_exit_status()
+
+    if exit_code == 0:
+        print("  ✓ 服务已重启")
+    else:
+        print(f"  ⚠ 重启命令返回: {exit_code}")
+
+    # 5. 检查状态
+    print("\n4. 检查服务状态...")
+    stdin, stdout, stderr = ssh.exec_command("systemctl status sunday.service --no-pager -l | head -15")
+    status = stdout.read().decode('utf-8')
+    print(status)
+
+    ssh.close()
+
+    print("\n=== 部署完成 ===")
+    print(f"API 地址: http://{SERVER}:8005")
+    print(f"\n提示: 下次运行只需执行 'python deploy_auto.py' 即可")
 
 if __name__ == "__main__":
-    success = deploy_via_server()
-    sys.exit(0 if success else 1)
+    main()
