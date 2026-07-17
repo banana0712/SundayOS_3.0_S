@@ -2,7 +2,7 @@
 
 > 记录所有已完成的重大设计决策、技术选型和架构选择。这不是 ADR 的替代——ADR 记录「决策与理由」的过程，本文档是你快速查阅「我们做了什么决定」的索引。每个决策引用其 ADR 正文。
 
-**版本** 2.3 · **最后更新** 2026-07-17
+**版本** 2.4 · **最后更新** 2026-07-17
 
 ---
 
@@ -29,6 +29,7 @@
 | 17 | 独立前端目录 | frontend/ Next.js 15 应用，独立于 console/ | 本文件 §2.12 |
 | 18 | ★ 上下文窗口压缩 | 超过12条自动压缩，滑动窗口保留6条+摘要 | 本文件 §2.13 |
 | 19 | ★ 豆包模型选择修复 | 修正能力标记，提升使用率至60% | 本文件 §2.14 |
+| 20 | ★ 豆包引擎配置 | 完整环境变量配置，账户充值后正常路由 | 本文件 §2.15 |
 
 ---
 
@@ -263,7 +264,33 @@
 - 89 个单元测试全部通过
 - 验证脚本确认所有修复点（function_calling=False, ID=doubao-chat, primary=True, quality=0.85）
 
-### 2.15 对话持久化 + 语义 embedding（Qwen · 2026-07-15）
+### 2.15 豆包引擎配置修复（v0.10.10 · 2026-07-17）
+
+**我们做了什么**：
+- 诊断发现豆包未被选中的根本原因：**账户欠费**导致 API 调用失败
+- 充值后配置完整环境变量：
+  - `CUSTOM_API_KEY=ark-***`（从 .env 读取）
+  - `CUSTOM_BASE_URL=https://ark.cn-beijing.volces.com/api/v3`
+  - `CUSTOM_MODEL_CHAT=doubao-seed-character-260628`（新增）
+- 更新本地和服务器 `.env` 文件（`.env` 不在 Git 中，需手动同步）
+- 部署脚本未包含 `.env`，因此创建 `update_server_env.py` 远程更新配置
+
+**为什么这样做**：
+- 即使路由逻辑和权重配置正确，账户欠费会导致 API 调用失败
+- 路由器检测到引擎失败后会 fallback 到下一个可用引擎（DeepSeek）
+- 缺少 `CUSTOM_MODEL_CHAT` 会使用默认值 `"doubao-pro-128k"`，可能与实际 endpoint ID 不匹配
+
+**验证通过**：
+- curl 测试豆包 API 返回 200
+- 生产环境路由测试："你好" → `doubao-chat`
+- 生产环境路由测试："帮我写一个Python函数" → `doubao-chat`
+- 豆包现已成为 L2_DAILY 对话的首选引擎
+
+**相关决策**：
+- 部署架构优化（v0.10.10）：服务器推送到 GitHub，避免本地网络不稳定
+- 移动端登出按钮修复（v0.10.10）：修复 CSS 显示问题
+
+### 2.16 对话持久化 + 语义 embedding（Qwen · 2026-07-15）
 
 **我们做了什么**：
 - `app/conversation/sqlite_store.py`：`SQLiteConversationStore(ConversationStore)` 子类化，

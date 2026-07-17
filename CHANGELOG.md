@@ -10,6 +10,34 @@
 
 ---
 
+## [0.10.10] — 2026-07-17
+
+### Fixed
+- **豆包引擎配置问题**：
+  - 诊断发现豆包账户欠费导致 API 调用失败，路由器 fallback 到 DeepSeek
+  - 充值后添加完整环境变量配置（`CUSTOM_MODEL_CHAT=doubao-seed-character-260628`）
+  - 验证豆包现已成为 L2_DAILY 对话的首选引擎
+  - 测试结果："你好" 和 "帮我写一个Python函数" 均正确路由到豆包
+- **移动端登出按钮显示问题**：
+  - 修复移动端 CSS 规则错误隐藏了 `#keyBtn`（登出按钮）
+  - 从 `display:none` 列表中移除 `#keyBtn`
+  - 用户现在可以在移动端正常登出
+
+### Changed
+- **部署架构优化** (`deploy_auto.py`)：
+  - 改为服务器推送到 GitHub（而非本地推送）
+  - 利用香港服务器稳定的网络环境避免推送失败
+  - 流程：本地上传文件 → 服务器提交 → 服务器 pull rebase → 服务器推送到 GitHub
+  - 添加 `git pull --rebase` 避免 non-fast-forward 错误
+
+### Added
+- **诊断工具**：
+  - `check_server_config.py`：检查服务器引擎配置
+  - `check_server_env.py`：检查服务器环境变量
+  - `update_server_env.py`：远程更新服务器 .env 文件
+  - `test_doubao_api.py`：直接测试豆包 API 连接
+  - `test_production_routing.py`：测试生产环境模型路由行为
+
 ## [0.10.9] — 2026-07-17
 
 ### Fixed

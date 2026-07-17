@@ -2,7 +2,7 @@
 
 > 诚实、可验证的当前状态。每次功能开发完成后必须更新本文件。
 
-**版本** 2.6 · **最后更新** 2026-07-17（v0.10.9）
+**版本** 2.7 · **最后更新** 2026-07-17（v0.10.10）
 
 ---
 
@@ -11,18 +11,20 @@
 ```
 文档体系     ✅ 工程文档 + 指南 + 12 ADR + CHANGELOG + 开发契约 + /checkup 体检
 3.0 设计集   ✅ 13 技术规范 + 12 ADR（001-012）+ 论文附录
-后端实现     ✅ Phase 1 ~96%：引擎路由✅ 记忆三层✅ 反思✅ ReAct✅ SSE✅
+后端实现     ✅ Phase 1 ~98%：引擎路由✅ 记忆三层✅ 反思✅ ReAct✅ SSE✅
               护栏✅ Chat UI✅ 账号系统✅ 反馈学习✅ 多气泡✅ 质量路由✅
               对话持久化✅ 语义 embedding（Qwen）✅ Dashboard 健康/事件真数据✅
-              **工具强制执行修复✅（持久化验证通过）**
-              **Router 拆分进行中 4/8 完成（1360 → 1008 行）**
-              **上下文窗口压缩✅（12条→6条+摘要，61.5%压缩率）**
-              **豆包模型选择修复✅（使用率 30%→60% 预期）**
+              工具强制执行✅（持久化验证通过）
+              Router 拆分进行中 4/8 完成（1360 → 1008 行）
+              上下文窗口压缩✅（12条→6条+摘要，61.5%压缩率）
+              **豆包引擎配置✅（账户充值 + 完整环境变量配置）**
+              **移动端登出按钮✅（CSS 显示问题修复）**
+              **部署架构优化✅（服务器推送到 GitHub）**
 前端口       89 测试全过（1.8s）
 前端实现     ✅ Dashboard + Brain + Memory + Chat + 移动端全适配 + 登录 UI
-              ✅ **新增独立 frontend/ 目录（Next.js 15）**
+              ✅ 新增独立 frontend/ 目录（Next.js 15）
 防腐机制     ✅ ENGINEERING_CONTRACT（规矩）+ /checkup（裁判）闭环
-版本管理     ✅ v0.10.9 · SemVer + Keep a Changelog
+版本管理     ✅ v0.10.10 · SemVer + Keep a Changelog
 服务器       ✅ 小兔云香港 2H2G 24/7 · /console + / 双入口
 Claude Code  ✅ Auto mode 已启用，健康检查通过
 ```
@@ -80,13 +82,16 @@ Claude Code  ✅ Auto mode 已启用，健康检查通过
 
 | 模块 | 内容 |
 |------|------|
-| **豆包模型选择修复 (v0.10.9)** | ✅ 修复豆包错误标记为支持 function_calling 的问题<br>引擎 ID 改名：sunday-chat → doubao-chat<br>保持 primary=True 和 quality=0.85<br>**预期效果**：使用率 30% → 60%<br>普通聊天豆包获胜，工具调用用 DeepSeek<br>新增 `docs/MODEL_SELECTION_ANALYSIS.md` 详细分析 |
+| **豆包引擎配置修复 (v0.10.10)** | ✅ 诊断并解决豆包路由问题<br>**根本原因**：账户欠费导致 API 调用失败<br>充值后添加完整配置：`CUSTOM_MODEL_CHAT=doubao-seed-character-260628`<br>**验证通过**："你好" 和编程任务均正确路由到豆包<br>豆包现已成为 L2_DAILY 对话的首选引擎 |
+| **移动端登出按钮修复 (v0.10.10)** | ✅ 修复移动端 CSS 错误隐藏 `#keyBtn`<br>从 `display:none` 列表中移除该选择器<br>用户可在移动端正常使用登出功能 |
+| **部署架构优化 (v0.10.10)** | ✅ 改为服务器推送到 GitHub<br>利用香港服务器稳定网络避免推送失败<br>添加 `git pull --rebase` 处理冲突<br>流程：本地上传→服务器提交→服务器推送→重启 |
+| **豆包模型选择修复 (v0.10.9)** | ✅ 修复豆包错误标记为支持 function_calling 的问题<br>引擎 ID 改名：sunday-chat → doubao-chat<br>保持 primary=True 和 quality=0.85<br>新增 `docs/MODEL_SELECTION_ANALYSIS.md` 详细分析 |
 | **上下文压缩 (v0.10.8)** | ✅ 自动压缩超过12条的对话历史<br>滑动窗口：保留最近6条+摘要<br>压缩比 61.5%（26条→10条验证通过）<br>摘要自动注入下一轮对话<br>数据库新增 summary 字段<br>已部署并验证通过 |
 | **流式优化 (v0.10.3)** | ✅ 真正的逐 token 流式输出<br>新增 `CognitiveRouter.route_stream()` 方法<br>使用引擎原生 stream 能力（DeepSeek/豆包均支持）<br>替换原有"等完整响应再分块"方案<br>首字延迟大幅降低，打字效果更自然<br>已部署并验证（豆包引擎 12 块/次） |
 | 用户交互日志 | ✅ Phase 1-3 全部完成并部署<br>记录、查询、统计 API 全部上线<br>`/api/logs/interaction` 分页查询<br>`/api/logs/interaction/{request_id}` 完整链路<br>`/api/logs/interaction/stats/summary` 统计信息 |
 | 前端应用 | 新增 `frontend/` 目录（Next.js 15）<br>包含聊天界面、主题编辑器、全局样式<br>已部署到生产服务器 |
 | Claude Code | 运行 `/doctor` 健康检查，启用 auto mode 默认权限模式 |
-| 部署 | 使用 `/deploy` 自动部署到服务器（本地→服务器直连）<br>`deploy_auto.py` 零交互自动上传+重启<br>服务状态：健康运行中 |
+| 部署 | 使用 `/deploy` 自动部署到服务器（本地→服务器→GitHub）<br>`deploy_auto.py` 零交互自动上传+重启+推送<br>服务状态：健康运行中 |
 
 ### 2026-07-16
 
