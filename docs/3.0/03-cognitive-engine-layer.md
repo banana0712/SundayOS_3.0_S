@@ -206,15 +206,22 @@ L1 请求:     本地 → DeepSeek-Chat → 规则模板
 
 ## 3.8 已适配的引擎（起步）
 
-| Provider 类 | 引擎 id | 场景 | 强推理 | 工具 | 本地 |
-|------------|---------|------|:---:|:---:|:---:|
-| `OpenAICompatibleProvider` | `deepseek-chat` | L1-L2 默认、中文 | | ✓ | |
-| `OpenAICompatibleProvider` | `deepseek-reasoner` | L3 性价比推理 | ✓ | | |
-| `OpenAICompatibleProvider` | `qwen-plus` | 中文日常回退 | | ✓ | |
-| `OpenAICompatibleProvider` | `ling-1t` | 免费额度日常 | | | |
-| `AnthropicProvider` | `claude-opus` | L3-L4 编码/学习 | ✓ | ✓ | |
-| `OpenAICompatibleProvider` | `gpt-4o` | L3 回退 | ✓ | ✓ | |
-| `OllamaProvider` | `qwen2.5:7b` 等 | 隐私/离线 | | | ✓ |
+| Provider 类 | 引擎 id | 场景 | 强推理 | 工具 | 本地 | 质量 | 主引擎 |
+|------------|---------|------|:---:|:---:|:---:|:---:|:---:|
+| `OpenAICompatibleProvider` | `doubao-chat` | L1-L2 默认、中文优先 | | | | 0.85 | ✓ |
+| `OpenAICompatibleProvider` | `deepseek-chat` | L2 需要工具调用 | | ✓ | | 0.55 | |
+| `OpenAICompatibleProvider` | `deepseek-reasoner` | L3 性价比推理 | ✓ | | | 0.65 | |
+| `OpenAICompatibleProvider` | `qwen-plus` | 中文日常回退 | | ✓ | | 0.60 | |
+| `AnthropicProvider` | `claude-opus` | L3-L4 编码/学习 | ✓ | ✓ | | 0.92 | |
+| `OpenAICompatibleProvider` | `gpt-4o` | L3 回退 | ✓ | ✓ | | 0.85 | |
+| `OllamaProvider` | `qwen2.5:7b` 等 | 隐私/离线 | | | ✓ | 0.50 | |
+
+**注意事项**（v0.10.9 更新）：
+- **豆包（doubao-chat）**：标记为 `primary=True`，质量评分 0.85（最高），普通聊天场景优先选择
+- **豆包不支持工具调用**：需要搜索、计算等工具场景自动降级到 DeepSeek-chat
+- **豆包无强推理版本**：复杂推理场景（L3_DEEP）使用 DeepSeek-reasoner
+- **配置方式**：豆包通过 `CUSTOM_API_KEY` 环境变量加载（而非 `DOUBAO_API_KEY`）
+- **预期使用率**：豆包 ~60%，DeepSeek-chat ~10%，DeepSeek-reasoner ~30%
 
 > 新增引擎 = 写一个 Provider 子类 + 在注册表登记能力/价格，**零改上层代码**。这正是「模型即引擎」的工程兑现。
 

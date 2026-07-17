@@ -9,7 +9,7 @@
 | 响应速度 | 毫秒级，始终在线 | 秒级，按需激活 |
 | 推理深度 | 直觉、模式匹配 | 逻辑、多步推理 |
 | 场景 | 日常对话、简单查询、情感回应 | 复杂规划、多步任务、高风险决策 |
-| 引擎（经路由） | L1-L2（DeepSeek/本地） | L3-L4（Claude/GPT） |
+| 引擎（经路由） | L1-L2（豆包/DeepSeek） | L3-L4（DeepSeek-reasoner/Claude） |
 | 记忆访问 | 近期记忆 + 画像摘要 | 全量检索 + 反思 + Experience |
 | 输出 | 对话表达（Utterance） | 思维轨迹（Thought）+ 信念更新（Belief） |
 
