@@ -51,6 +51,37 @@ from .cognition.react_loop import ReActLoop, ReActResult
 from .cognition.context_builder import build_context, AssembledContext
 from .persona import build_system_prompt, build_prompt_with_prefs, get_user_preferences
 from .persona import load as load_persona, reload as reload_persona, version as persona_version
+
+
+def _get_recent_topics(conv_id: str, limit: int = 3) -> list[str]:
+    """从最近对话中提取话题关键词（简单规则）"""
+    if not conv_id:
+        return []
+
+    conv = CONV.get(conv_id)
+    if not conv or not conv.messages:
+        return []
+
+    # 提取最近几条用户消息的关键词
+    topics = []
+    user_messages = [m for m in conv.messages[-6:] if m.role == "user"]
+
+    for msg in user_messages[-limit:]:
+        # 简单规则：提取常见话题词
+        content = msg.content.lower()
+        topic_keywords = {
+            "运动": ["跑步", "健身", "运动", "游泳"],
+            "工作": ["工作", "项目", "会议", "代码"],
+            "学习": ["学", "课程", "考试", "书"],
+            "健康": ["生病", "医院", "药", "健康"],
+            "旅行": ["旅行", "机票", "酒店"],
+        }
+        for topic, keywords in topic_keywords.items():
+            if any(kw in content for kw in keywords):
+                if topic not in topics:
+                    topics.append(topic)
+
+    return topics[:limit]
 from .persona.empathy import run_empathy_pipeline, analyze_user as empathy_analyze
 
 load_dotenv(override=True)
@@ -231,7 +262,8 @@ async def shortcuts_chat(req: ShortcutChatRequest,
     user = user_id
 
     # Topic-aware cross-session context
-    assembled = await build_context(req.message, user, MEMORY, ROUTER)
+    recent_topics = _get_recent_topics(req.conversation_id)
+    assembled = await build_context(req.message, user, MEMORY, ROUTER, recent_topics=recent_topics)
     context_block = assembled.to_prompt_section() if assembled else ""
 
     use_reasoner = needs_reasoner("chat", req.message,
@@ -651,7 +683,8 @@ async def debug_context(req: EmpathyRequest,
     """Debug endpoint — see what context the ContextBuilder assembles."""
     user_id = _auth(x_api_key, x_sunday_token)
     user = user_id
-    assembled = await build_context(req.message, user, MEMORY, ROUTER)
+    recent_topics = _get_recent_topics(req.conversation_id) if hasattr(req, 'conversation_id') else []
+    assembled = await build_context(req.message, user, MEMORY, ROUTER, recent_topics=recent_topics)
     return {
         "message": req.message,
         "context": assembled.to_prompt_section(),
@@ -733,7 +766,8 @@ async def chat(req: ChatRequest, x_api_key: str | None = Header(default=None), x
         raise HTTPException(status_code=400, detail=f"guardrail:{t.layer}:{t.reason}")
 
     # Build topic-aware cross-session context (Engram/GAM/APEX-MEM)
-    assembled = await build_context(req.message, user_id, MEMORY, ROUTER)
+    recent_topics = _get_recent_topics(req.conversation_id)
+    assembled = await build_context(req.message, user_id, MEMORY, ROUTER, recent_topics=recent_topics)
     context_block = assembled.to_prompt_section() if assembled else ""
 
     # 记录上下文检索
@@ -958,7 +992,8 @@ async def chat_stream(req: ChatRequest,
             return
 
         # Memory retrieval
-        assembled = await build_context(req.message, user_id, MEMORY, ROUTER)
+        recent_topics = _get_recent_topics(req.conversation_id)
+        assembled = await build_context(req.message, user_id, MEMORY, ROUTER, recent_topics=recent_topics)
         context_block = assembled.to_prompt_section() if assembled else ""
 
         # Empathy: UU analysis → IRG guidance
