@@ -1056,10 +1056,12 @@ from .routers import admin as _admin_router
 from .routers import conversations as _conv_router
 from .routers import memory as _memory_router
 from .routers import preferences as _pref_router
+from .routers import logs as _logs_router
 
 app.include_router(_admin_router.router)
 app.include_router(_conv_router.router)
 app.include_router(_memory_router.router)
 app.include_router(_pref_router.router)
+app.include_router(_logs_router.router)
 
 
